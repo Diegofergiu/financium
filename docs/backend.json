@@ -1,0 +1,610 @@
+{
+  "entities": {
+    "AppUser": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "AppUser",
+      "type": "object",
+      "description": "Represents an authenticated user within the application, storing application-specific data linked to their Firebase Auth UID. This entity does not store authentication credentials.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the AppUser entity, typically matching the Firebase Authentication User UID."
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's email address, used for communication and invitations.",
+          "format": "email"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "The user's preferred display name."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the user account was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the user account was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "email",
+        "displayName",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Wallet": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Wallet",
+      "type": "object",
+      "description": "Represents a financial workspace or 'book' that can be shared among multiple users. All financial transactions and related data belong to a specific wallet.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Wallet entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the financial wallet (e.g., 'Personal Finances', 'Business Operations')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A brief description of the wallet's purpose or contents."
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Reference to the unique identifier of the AppUser who created and owns this wallet. (Relationship: AppUser 1:N Wallet)"
+        },
+        "members": {
+          "type": "array",
+          "description": "List of members with access to this wallet and their assigned roles. (Relationship: AppUser N:N Wallet with attributes)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the wallet was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the wallet was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "ownerId",
+        "members",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "WalletMember": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "WalletMember",
+      "type": "object",
+      "description": "Represents a user's membership and role within a specific Wallet, managing access permissions.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the WalletMember entity."
+        },
+        "walletId": {
+          "type": "string",
+          "description": "Reference to the unique identifier of the Wallet this membership belongs to. (Relationship: Wallet 1:N WalletMember)"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the unique identifier of the AppUser who is a member. (Relationship: AppUser 1:N WalletMember)"
+        },
+        "role": {
+          "type": "string",
+          "description": "The role of the user within this wallet, defining their permissions.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "invitedByUserId": {
+          "type": "string",
+          "description": "Reference to the AppUser who sent the invitation to this member. (Relationship: AppUser 1:N WalletMember)"
+        },
+        "status": {
+          "type": "string",
+          "description": "The current status of the invitation (e.g., 'pending', 'accepted', 'declined').",
+          "items": {
+            "type": "string"
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the membership record was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the membership record was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "walletId",
+        "userId",
+        "role",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Category": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Category",
+      "type": "object",
+      "description": "Defines custom categories for organizing transactions, allowing users to assign names and colors.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Category entity."
+        },
+        "walletId": {
+          "type": "string",
+          "description": "Reference to the unique identifier of the Wallet this category belongs to. (Relationship: Wallet 1:N Category)"
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the category (e.g., 'Groceries', 'Salary', 'Rent')."
+        },
+        "colorHex": {
+          "type": "string",
+          "description": "Hexadecimal color code for visual representation of the category (e.g., '#RRGGBB')."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the category was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the category was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "walletId",
+        "name",
+        "colorHex",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PaymentMethod": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "PaymentMethod",
+      "type": "object",
+      "description": "Defines custom payment methods used in transactions.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the PaymentMethod entity."
+        },
+        "walletId": {
+          "type": "string",
+          "description": "Reference to the unique identifier of the Wallet this payment method belongs to. (Relationship: Wallet 1:N PaymentMethod)"
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the payment method (e.g., 'Cash', 'Credit Card', 'Bank Transfer')."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the payment method was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the payment method was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "walletId",
+        "name",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Transaction": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Transaction",
+      "type": "object",
+      "description": "Records individual income or expense entries within a specific financial wallet.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Transaction entity."
+        },
+        "walletId": {
+          "type": "string",
+          "description": "Reference to the unique identifier of the Wallet this transaction belongs to. (Relationship: Wallet 1:N Transaction)"
+        },
+        "type": {
+          "type": "string",
+          "description": "The type of transaction, indicating whether it's an 'income' or 'expense'.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "amount": {
+          "type": "number",
+          "description": "The monetary value of the transaction."
+        },
+        "date": {
+          "type": "string",
+          "description": "The date and time when the transaction occurred.",
+          "format": "date-time"
+        },
+        "description": {
+          "type": "string",
+          "description": "A brief description or note about the transaction."
+        },
+        "categoryId": {
+          "type": "string",
+          "description": "Reference to the unique identifier of the Category associated with this transaction. (Relationship: Category 1:N Transaction)"
+        },
+        "paymentMethodId": {
+          "type": "string",
+          "description": "Reference to the unique identifier of the PaymentMethod used for this transaction. (Relationship: PaymentMethod 1:N Transaction)"
+        },
+        "attachmentUrl": {
+          "type": "string",
+          "description": "URL to an uploaded receipt or image related to the transaction (e.g., Firebase Storage URL).",
+          "format": "uri"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the transaction was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the transaction was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "walletId",
+        "type",
+        "amount",
+        "date",
+        "description",
+        "categoryId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Check": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Check",
+      "type": "object",
+      "description": "Manages details for both 'Checks to Collect' and 'Checks Issued', including their status and due dates.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Check entity."
+        },
+        "walletId": {
+          "type": "string",
+          "description": "Reference to the unique identifier of the Wallet this check belongs to. (Relationship: Wallet 1:N Check)"
+        },
+        "type": {
+          "type": "string",
+          "description": "The type of check, either 'toCollect' (receivable) or 'issued' (payable).",
+          "items": {
+            "type": "string"
+          }
+        },
+        "checkNumber": {
+          "type": "string",
+          "description": "The unique number printed on the check."
+        },
+        "bank": {
+          "type": "string",
+          "description": "The name of the bank associated with the check."
+        },
+        "issuerRecipient": {
+          "type": "string",
+          "description": "The name of the entity or person who issued the check (if 'toCollect') or to whom it was issued (if 'issued')."
+        },
+        "dueDate": {
+          "type": "string",
+          "description": "The date when the check is due for collection or payment.",
+          "format": "date-time"
+        },
+        "amount": {
+          "type": "number",
+          "description": "The monetary value of the check."
+        },
+        "status": {
+          "type": "string",
+          "description": "The current lifecycle status of the check (e.g., 'pending', 'cleared', 'voided', 'cancelled').",
+          "items": {
+            "type": "string"
+          }
+        },
+        "isCleared": {
+          "type": "boolean",
+          "description": "Boolean flag indicating if the check has been cleared (collected or paid). This affects the 'real' balance."
+        },
+        "clearedAt": {
+          "type": "string",
+          "description": "The date and time when the check was marked as cleared. This field is null if 'isCleared' is false.",
+          "format": "date-time"
+        },
+        "attachmentUrl": {
+          "type": "string",
+          "description": "URL to an uploaded image of the check (e.g., Firebase Storage URL).",
+          "format": "uri"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the check record was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the check record was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "walletId",
+        "type",
+        "checkNumber",
+        "bank",
+        "issuerRecipient",
+        "dueDate",
+        "amount",
+        "status",
+        "isCleared",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Budget": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Budget",
+      "type": "object",
+      "description": "Allows users to set spending limits for specific categories over a defined period to manage financial discipline.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Budget entity."
+        },
+        "walletId": {
+          "type": "string",
+          "description": "Reference to the unique identifier of the Wallet this budget belongs to. (Relationship: Wallet 1:N Budget)"
+        },
+        "name": {
+          "type": "string",
+          "description": "A descriptive name for the budget (e.g., 'Monthly Groceries Budget')."
+        },
+        "limitAmount": {
+          "type": "number",
+          "description": "The maximum monetary amount allocated for this budget during its period."
+        },
+        "categoryId": {
+          "type": "string",
+          "description": "Reference to the unique identifier of the Category this budget applies to. (Relationship: Category 1:N Budget)"
+        },
+        "startDate": {
+          "type": "string",
+          "description": "The start date for the budget period.",
+          "format": "date-time"
+        },
+        "endDate": {
+          "type": "string",
+          "description": "The end date for the budget period.",
+          "format": "date-time"
+        },
+        "periodType": {
+          "type": "string",
+          "description": "The recurring period type for the budget (e.g., 'monthly', 'weekly', 'yearly', 'custom').",
+          "items": {
+            "type": "string"
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the budget was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the budget was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "walletId",
+        "name",
+        "limitAmount",
+        "categoryId",
+        "startDate",
+        "endDate",
+        "periodType",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "AppUser",
+          "schema": {
+            "$ref": "#/backend/entities/AppUser"
+          },
+          "description": "Stores user profiles. Each document ID is the Firebase Auth UID. Accessible only by the authenticated user matching the {userId}."
+        }
+      },
+      {
+        "path": "/wallets/{walletId}",
+        "definition": {
+          "entityName": "Wallet",
+          "schema": {
+            "$ref": "#/backend/entities/Wallet"
+          },
+          "description": "Represents a shared financial workspace. Each document contains the ownerId and a 'members' map (UID -> Role) for direct authorization. This 'members' map replaces the string array in the original schema to fulfill the 'Membership Map' mandate for collaborative data. Access is granted to the owner or any user listed in the 'members' map with an appropriate role.",
+          "params": [
+            {
+              "name": "walletId",
+              "description": "Unique identifier for the Wallet."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/wallets/{walletId}/members/{memberId}",
+        "definition": {
+          "entityName": "WalletMember",
+          "schema": {
+            "$ref": "#/backend/entities/WalletMember"
+          },
+          "description": "Represents a user's specific membership and role within a Wallet. Documents include denormalized 'walletOwnerId' and 'walletMembersMap' (UID -> Role from parent Wallet) for authorization independence. Accessible by the member themselves, the wallet owner, or other members with appropriate roles (e.g., 'editor').",
+          "params": [
+            {
+              "name": "walletId",
+              "description": "Unique identifier of the parent Wallet."
+            },
+            {
+              "name": "memberId",
+              "description": "Unique identifier for the WalletMember record (typically the member's userId)."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/wallets/{walletId}/categories/{categoryId}",
+        "definition": {
+          "entityName": "Category",
+          "schema": {
+            "$ref": "#/backend/entities/Category"
+          },
+          "description": "Custom categories for transactions within a Wallet. Documents include denormalized 'walletOwnerId' and 'walletMembersMap' (UID -> Role from parent Wallet) for authorization independence. Accessible by the wallet owner or any member of the parent Wallet.",
+          "params": [
+            {
+              "name": "walletId",
+              "description": "Unique identifier of the parent Wallet."
+            },
+            {
+              "name": "categoryId",
+              "description": "Unique identifier for the Category."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/wallets/{walletId}/paymentMethods/{paymentMethodId}",
+        "definition": {
+          "entityName": "PaymentMethod",
+          "schema": {
+            "$ref": "#/backend/entities/PaymentMethod"
+          },
+          "description": "Custom payment methods for transactions within a Wallet. Documents include denormalized 'walletOwnerId' and 'walletMembersMap' (UID -> Role from parent Wallet) for authorization independence. Accessible by the wallet owner or any member of the parent Wallet.",
+          "params": [
+            {
+              "name": "walletId",
+              "description": "Unique identifier of the parent Wallet."
+            },
+            {
+              "name": "paymentMethodId",
+              "description": "Unique identifier for the PaymentMethod."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/wallets/{walletId}/transactions/{transactionId}",
+        "definition": {
+          "entityName": "Transaction",
+          "schema": {
+            "$ref": "#/backend/entities/Transaction"
+          },
+          "description": "Individual income or expense entries for a Wallet. Documents include denormalized 'walletOwnerId' and 'walletMembersMap' (UID -> Role from parent Wallet) for authorization independence. Accessible by the wallet owner or any member of the parent Wallet.",
+          "params": [
+            {
+              "name": "walletId",
+              "description": "Unique identifier of the parent Wallet."
+            },
+            {
+              "name": "transactionId",
+              "description": "Unique identifier for the Transaction."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/wallets/{walletId}/checks/{checkId}",
+        "definition": {
+          "entityName": "Check",
+          "schema": {
+            "$ref": "#/backend/entities/Check"
+          },
+          "description": "Manages checks (to collect or issued) for a Wallet. Documents include denormalized 'walletOwnerId' and 'walletMembersMap' (UID -> Role from parent Wallet) for authorization independence. Accessible by the wallet owner or any member of the parent Wallet.",
+          "params": [
+            {
+              "name": "walletId",
+              "description": "Unique identifier of the parent Wallet."
+            },
+            {
+              "name": "checkId",
+              "description": "Unique identifier for the Check."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/wallets/{walletId}/budgets/{budgetId}",
+        "definition": {
+          "entityName": "Budget",
+          "schema": {
+            "$ref": "#/backend/entities/Budget"
+          },
+          "description": "Spending limits for categories within a Wallet. Documents include denormalized 'walletOwnerId' and 'walletMembersMap' (UID -> Role from parent Wallet) for authorization independence. Accessible by the wallet owner or any member of the parent Wallet.",
+          "params": [
+            {
+              "name": "walletId",
+              "description": "Unique identifier of the parent Wallet."
+            },
+            {
+              "name": "budgetId",
+              "description": "Unique identifier for the Budget."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The recommended Firestore data structure prioritizes Authorization Independence, Structural Segregation, and consistent Access Modeling to ensure robust, scalable, and debuggable security rules. All design principles and mandates have been applied rigorously.\n\n**Authorization Independence (Mandate A & C):**\n\nThe core of this design revolves around the 'Wallet' entity, which is the central point for collaborative data. To achieve authorization independence for all wallet-related subcollections (WalletMembers, Categories, PaymentMethods, Transactions, Checks, and Budgets), a critical denormalization strategy is employed. Each document within these subcollections will store the `walletOwnerId` (the UID of the Wallet's owner) and a `walletMembersMap` (a map of `UID -> Role` for all members of the parent Wallet). This ensures that any security rule for a document in these subcollections can determine access permissions by only inspecting `resource.data` (the document itself) and `request.auth.uid`, without needing to perform a `get()` operation on the parent `Wallet` document. This is paramount for preventing broken atomic operations and simplifying rule debugging, directly addressing the CRITICAL Authorization Independence principle.\n\nFor the `Wallet` entity itself, it will contain its `ownerId` and a top-level `members` map (`{ [uid: string]: 'role' }`). This is a modification from the provided `Wallet` schema's `members: string[]` to align with the 'Membership Map' mandate for collaborative data, making roles directly accessible for rules on the `Wallet` document.\n\n**Structural Segregation (Mandate B):**\n\nData is segregated into distinct collections based on its security posture. For example:\n*   `/users/{userId}`: Stores private `AppUser` data, accessible only by the owner.\n*   `/wallets/{walletId}`: Stores collaborative `Wallet` data, accessible by its owner and members.\n*   `/wallets/{walletId}/subcollection/{docId}`: All subcollections of a `Wallet` (e.g., `transactions`, `categories`) inherit the wallet's collaborative access model and will include denormalized authorization fields. This ensures all documents within a given collection path share the same fundamental security requirements, simplifying rule logic. There are no mixed-security-posture documents within a single collection.\n\n**QAPs (Rules are not Filters):**\n\nThe denormalization strategy directly enables secure `list` operations. For any subcollection under a `Wallet`, security rules can leverage the `walletOwnerId` and `walletMembersMap` fields present in every document. A rule can simply check if `request.auth.uid` matches `resource.data.walletOwnerId` or if `request.auth.uid` is a key in `resource.data.walletMembersMap`. This allows queries to filter on the `walletId` (implied by the path) and rely on the server-side security rules to implicitly filter based on the denormalized `walletMembersMap` without requiring client-side filters on sensitive fields, or inefficient `get()` calls in rules. For example, a user can query all their transactions for a given wallet, and the rules will ensure they only receive transactions from wallets they are a member of."
+  }
+}
