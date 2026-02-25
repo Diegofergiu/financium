@@ -1,23 +1,22 @@
 "use client"
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { AlertCircle, Clock, CheckCircle2 } from "lucide-react"
+import { Clock } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 const dummyAlerts = [
-  { id: "1", bank: "Chase Bank", party: "Office Rental Inc.", amount: 1500, daysLeft: 2, type: "issued" },
-  { id: "2", bank: "Wells Fargo", party: "Client X Project", amount: 2400, daysLeft: 4, type: "collectible" },
-  { id: "3", bank: "BoA", party: "Suppliers Ltd.", amount: 800, daysLeft: 12, type: "issued" },
+  { id: "1", bank: "Banco Chase", party: "Alquiler Oficinas S.A.", amount: 1500, daysLeft: 2, type: "issued" },
+  { id: "2", bank: "Wells Fargo", party: "Proyecto Cliente X", amount: 2400, daysLeft: 4, type: "collectible" },
+  { id: "3", bank: "BoA", party: "Proveedores Unidos", amount: 800, daysLeft: 12, type: "issued" },
 ]
 
 export function CheckAlerts() {
   return (
     <Card className="shadow-sm border-none overflow-hidden bg-white dark:bg-card">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-lg font-bold">Upcoming Checks</CardTitle>
-        <Badge variant="outline" className="text-xs">Next 15 Days</Badge>
+        <CardTitle className="text-lg font-bold">Próximos Cheques</CardTitle>
+        <Badge variant="outline" className="text-xs">Próximos 15 días</Badge>
       </CardHeader>
       <CardContent>
         <ScrollArea className="h-[300px] pr-4">
@@ -46,16 +45,16 @@ export function CheckAlerts() {
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>{alert.bank}</span>
                       <span className={isCritical ? "text-red-600 font-medium" : ""}>
-                        {alert.daysLeft} days remaining
+                        Quedan {alert.daysLeft} días
                       </span>
                     </div>
                     <div className="pt-1 flex gap-2">
                       <Badge variant={alert.type === 'issued' ? 'secondary' : 'default'} className="text-[10px] h-4 px-1">
-                        {alert.type === 'issued' ? 'Issued' : 'To Collect'}
+                        {alert.type === 'issued' ? 'Emitido' : 'Por Cobrar'}
                       </Badge>
                       {isCritical && (
                         <Badge variant="destructive" className="text-[10px] h-4 px-1 animate-pulse">
-                          CRITICAL
+                          CRÍTICO
                         </Badge>
                       )}
                     </div>

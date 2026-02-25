@@ -15,13 +15,13 @@ export default function DashboardLayout({
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
           <div className="flex-1">
-            <h1 className="text-sm font-semibold text-muted-foreground">Financium App</h1>
+            <h1 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Financium App</h1>
           </div>
           <div className="flex items-center gap-4">
-             {/* Dynamic search or notifications could go here */}
+             {/* Aquí podría ir búsqueda dinámica o notificaciones */}
           </div>
         </header>
-        <div className="flex flex-1 flex-col gap-4 p-4 md:p-8 pt-0 overflow-auto bg-[#F7F9FB] dark:bg-background">
+        <div className="flex flex-1 flex-col gap-4 p-4 md:p-8 pt-4 overflow-auto bg-[#F7F9FB] dark:bg-background">
           {children}
         </div>
       </SidebarInset>

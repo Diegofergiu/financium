@@ -29,15 +29,15 @@ import { suggestTransactionCategory } from "@/ai/flows/suggest-transaction-categ
 import { useToast } from "@/hooks/use-toast"
 
 const formSchema = z.object({
-  description: z.string().min(2, "Description is required"),
-  amount: z.string().refine((val) => !isNaN(Number(val)), "Amount must be a number"),
-  category: z.string().min(1, "Category is required"),
+  description: z.string().min(2, "La descripción es requerida"),
+  amount: z.string().refine((val) => !isNaN(Number(val)), "El monto debe ser un número"),
+  category: z.string().min(1, "La categoría es requerida"),
   date: z.string(),
   type: z.enum(["income", "expense"]),
-  paymentMethod: z.string().min(1, "Method is required")
+  paymentMethod: z.string().min(1, "El método es requerido")
 })
 
-const categories = ["Food & Drink", "Groceries", "Utilities", "Rent", "Salary", "Investment", "Other"]
+const categories = ["Comida y Bebida", "Víveres", "Servicios", "Alquiler", "Salario", "Inversión", "Otros"]
 
 export function AddTransactionDialog() {
   const [isOpen, setIsOpen] = useState(false)
@@ -52,14 +52,14 @@ export function AddTransactionDialog() {
       category: "",
       date: new Date().toISOString().split('T')[0],
       type: "expense",
-      paymentMethod: "Card"
+      paymentMethod: "Tarjeta"
     }
   })
 
   const onSuggestCategory = async () => {
     const desc = form.getValues("description")
     if (!desc) {
-      toast({ title: "Please enter a description first" })
+      toast({ title: "Por favor ingresa una descripción primero" })
       return
     }
 
@@ -70,9 +70,9 @@ export function AddTransactionDialog() {
         availableCategories: categories
       })
       form.setValue("category", result.suggestedCategory)
-      toast({ title: `AI suggested: ${result.suggestedCategory}` })
+      toast({ title: `IA sugiere: ${result.suggestedCategory}` })
     } catch (e) {
-      toast({ variant: "destructive", title: "Failed to get AI suggestion" })
+      toast({ variant: "destructive", title: "Error al obtener sugerencia de IA" })
     } finally {
       setIsSuggesting(false)
     }
@@ -81,22 +81,22 @@ export function AddTransactionDialog() {
   function onSubmit(values: z.infer<typeof formSchema>) {
     console.log(values)
     setIsOpen(false)
-    toast({ title: "Transaction added successfully" })
+    toast({ title: "Transacción agregada con éxito" })
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" className="bg-primary hover:bg-primary/90">
+        <Button size="sm" className="bg-primary hover:bg-primary/90 w-full md:w-auto">
           <Sparkles className="mr-2 h-4 w-4" />
-          Add Transaction
+          Añadir Transacción
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px] w-[95vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Add Transaction</DialogTitle>
+          <DialogTitle>Nueva Transacción</DialogTitle>
           <DialogDescription>
-            Record your income or expenses. Try AI suggestion for categories!
+            Registra ingresos o gastos. ¡Prueba la IA para sugerir categorías!
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -106,10 +106,10 @@ export function AddTransactionDialog() {
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Description</FormLabel>
+                  <FormLabel>Descripción</FormLabel>
                   <FormControl>
                     <div className="relative">
-                      <Input placeholder="e.g. Netflix Subscription" {...field} />
+                      <Input placeholder="ej. Suscripción Netflix" {...field} />
                       <Button
                         type="button"
                         size="icon"
@@ -137,7 +137,7 @@ export function AddTransactionDialog() {
                 name="amount"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Amount ($)</FormLabel>
+                    <FormLabel>Monto ($)</FormLabel>
                     <FormControl>
                       <Input placeholder="0.00" {...field} />
                     </FormControl>
@@ -150,16 +150,16 @@ export function AddTransactionDialog() {
                 name="type"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Type</FormLabel>
+                    <FormLabel>Tipo</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Type" />
+                          <SelectValue placeholder="Tipo" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="expense">Expense</SelectItem>
-                        <SelectItem value="income">Income</SelectItem>
+                        <SelectItem value="expense">Gasto</SelectItem>
+                        <SelectItem value="income">Ingreso</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -173,11 +173,11 @@ export function AddTransactionDialog() {
               name="category"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Category</FormLabel>
+                  <FormLabel>Categoría</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select category" />
+                        <SelectValue placeholder="Seleccionar categoría" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -191,13 +191,13 @@ export function AddTransactionDialog() {
               )}
             />
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                <FormField
                 control={form.control}
                 name="date"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Date</FormLabel>
+                    <FormLabel>Fecha</FormLabel>
                     <FormControl>
                       <Input type="date" {...field} />
                     </FormControl>
@@ -210,9 +210,9 @@ export function AddTransactionDialog() {
                 name="paymentMethod"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Payment Method</FormLabel>
+                    <FormLabel>Método de Pago</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g. Card" {...field} />
+                      <Input placeholder="ej. Tarjeta" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -222,11 +222,11 @@ export function AddTransactionDialog() {
 
             <div className="p-4 border-2 border-dashed rounded-lg bg-slate-50 dark:bg-muted/10 text-center cursor-pointer hover:bg-slate-100 transition-colors">
                <UploadCloud className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-               <p className="text-xs text-muted-foreground">Click to upload receipt photo</p>
+               <p className="text-xs text-muted-foreground">Click para subir foto del recibo</p>
             </div>
 
             <DialogFooter>
-              <Button type="submit" className="w-full">Save Transaction</Button>
+              <Button type="submit" className="w-full">Guardar Transacción</Button>
             </DialogFooter>
           </form>
         </Form>

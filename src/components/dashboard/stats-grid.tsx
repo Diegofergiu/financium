@@ -4,41 +4,41 @@ import { ArrowUpRight, ArrowDownRight, Wallet, TrendingUp } from "lucide-react"
 export function StatsGrid() {
   const stats = [
     {
-      title: "Total Balance",
+      title: "Balance Total",
       value: "$12,450.00",
-      description: "Available liquid funds",
+      description: "Fondos líquidos disponibles",
       icon: Wallet,
-      trend: "+2.5% from last month",
+      trend: "+2.5% desde el mes pasado",
       trendColor: "text-green-600",
     },
     {
-      title: "Monthly Income",
+      title: "Ingresos Mensuales",
       value: "$4,200.00",
-      description: "Total for June 2024",
+      description: "Total para Junio 2024",
       icon: ArrowUpRight,
-      trend: "3 income sources",
+      trend: "3 fuentes de ingreso",
       trendColor: "text-blue-600",
     },
     {
-      title: "Monthly Expenses",
+      title: "Gastos Mensuales",
       value: "$2,850.50",
-      description: "Total for June 2024",
+      description: "Total para Junio 2024",
       icon: ArrowDownRight,
-      trend: "-12% vs last month",
+      trend: "-12% vs mes pasado",
       trendColor: "text-red-600",
     },
     {
-      title: "Burn Rate",
+      title: "Tasa de Gasto",
       value: "$95.00",
-      description: "Average daily spend",
+      description: "Gasto promedio diario",
       icon: TrendingUp,
-      trend: "Steady progress",
+      trend: "Progreso estable",
       trendColor: "text-purple-600",
     },
   ]
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
       {stats.map((stat) => (
         <Card key={stat.title} className="shadow-sm border-none bg-white dark:bg-card">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

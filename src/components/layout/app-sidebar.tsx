@@ -32,10 +32,10 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 
 const navigationItems = [
-  { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
-  { name: "Transactions", icon: ArrowLeftRight, href: "/transactions" },
-  { name: "Checks", icon: Ticket, href: "/checks" },
-  { name: "Budgets", icon: Target, href: "/budgets" },
+  { name: "Panel Control", icon: LayoutDashboard, href: "/dashboard" },
+  { name: "Transacciones", icon: ArrowLeftRight, href: "/transactions" },
+  { name: "Cheques", icon: Ticket, href: "/checks" },
+  { name: "Presupuestos", icon: Target, href: "/budgets" },
 ]
 
 export function AppSidebar() {
@@ -50,14 +50,14 @@ export function AppSidebar() {
             <TrendingUp className="h-5 w-5" />
           </div>
           <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
-            <span className="font-bold text-lg">Financium</span>
-            <span className="text-xs text-muted-foreground italic">Premium Banking Suite</span>
+            <span className="font-bold text-lg tracking-tight">Financium</span>
+            <span className="text-[10px] text-muted-foreground italic">Suite Bancaria Premium</span>
           </div>
         </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Menu</SidebarGroupLabel>
+          <SidebarGroupLabel>Menú</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navigationItems.map((item) => (
@@ -81,17 +81,17 @@ export function AppSidebar() {
         <SidebarSeparator />
 
         <SidebarGroup>
-          <SidebarGroupLabel>Active Book</SidebarGroupLabel>
+          <SidebarGroupLabel>Libro Activo</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton className="h-12" tooltip="Switch Book">
+                <SidebarMenuButton className="h-12" tooltip="Cambiar Libro">
                   <WalletIcon className="h-4 w-4 text-accent" />
                   <div className="flex flex-col items-start text-xs overflow-hidden group-data-[collapsible=icon]:hidden">
                     <span className="font-semibold truncate w-full">
-                      {activeWallet?.name || "Personal Wallet"}
+                      {activeWallet?.name || "Billetera Personal"}
                     </span>
-                    <span className="text-muted-foreground">Main Account</span>
+                    <span className="text-muted-foreground">Cuenta Principal</span>
                   </div>
                   <ChevronRight className="ml-auto h-4 w-4 group-data-[collapsible=icon]:hidden" />
                 </SidebarMenuButton>
@@ -99,7 +99,7 @@ export function AppSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton className="text-primary hover:text-primary/90 group-data-[collapsible=icon]:hidden">
                   <PlusCircle className="h-4 w-4" />
-                  <span>Create New Book</span>
+                  <span>Crear Nuevo Libro</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -109,10 +109,10 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="Account Settings">
+            <SidebarMenuButton asChild tooltip="Ajustes">
               <Link href="/settings">
                 <Settings />
-                <span>Settings</span>
+                <span>Configuración</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -123,7 +123,7 @@ export function AppSidebar() {
                </div>
                <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden overflow-hidden">
                  <span className="font-medium truncate">Julian Rossi</span>
-                 <span className="text-[10px] text-muted-foreground truncate">julian@example.com</span>
+                 <span className="text-[10px] text-muted-foreground truncate">julian@ejemplo.com</span>
                </div>
              </SidebarMenuButton>
           </SidebarMenuItem>
