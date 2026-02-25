@@ -1,3 +1,6 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import {
   Table,
   TableBody,
@@ -19,6 +22,12 @@ const checks = [
 ]
 
 export function ChecksTable() {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   return (
     <div className="bg-white dark:bg-card rounded-xl shadow-sm overflow-hidden border-none">
       <div className="overflow-x-auto">
@@ -57,7 +66,9 @@ export function ChecksTable() {
                     {check.dueDate}
                   </div>
                 </TableCell>
-                <TableCell className="font-bold whitespace-nowrap">${check.amount.toLocaleString()}</TableCell>
+                <TableCell className="font-bold whitespace-nowrap">
+                  ${mounted ? check.amount.toLocaleString() : check.amount}
+                </TableCell>
                 <TableCell>
                   <Badge 
                     variant={

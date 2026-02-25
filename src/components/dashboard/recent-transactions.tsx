@@ -1,3 +1,6 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import {
   Table,
   TableBody,
@@ -54,6 +57,12 @@ const transactions = [
 ]
 
 export function RecentTransactions() {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   return (
     <Card className="border-none shadow-sm bg-white dark:bg-card">
       <CardHeader>
@@ -89,7 +98,10 @@ export function RecentTransactions() {
                 </TableCell>
                 <TableCell className="hidden md:table-cell text-muted-foreground text-xs">{t.method}</TableCell>
                 <TableCell className={`text-right font-bold ${t.amount < 0 ? "text-slate-900 dark:text-white" : "text-green-600"}`}>
-                  {t.amount < 0 ? "" : "+"}${Math.abs(t.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  {t.amount < 0 ? "" : "+"}${mounted 
+                    ? Math.abs(t.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })
+                    : Math.abs(t.amount).toFixed(2)
+                  }
                 </TableCell>
               </TableRow>
             ))}

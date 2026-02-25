@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Clock } from "lucide-react"
@@ -12,8 +13,14 @@ const dummyAlerts = [
 ]
 
 export function CheckAlerts() {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   return (
-    <Card className="shadow-sm border-none overflow-hidden bg-white dark:bg-card">
+    <Card className="shadow-sm border-none overflow-hidden bg-white dark:bg-card h-full">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-lg font-bold">Próximos Cheques</CardTitle>
         <Badge variant="outline" className="text-xs">Próximos 15 días</Badge>
@@ -39,7 +46,7 @@ export function CheckAlerts() {
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-semibold">{alert.party}</p>
                       <span className={`text-sm font-bold ${isCritical ? "text-red-600" : ""}`}>
-                        ${alert.amount.toLocaleString()}
+                        ${mounted ? alert.amount.toLocaleString() : alert.amount}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
