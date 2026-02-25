@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -24,79 +24,115 @@ import {
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Sparkles, Loader2, UploadCloud } from "lucide-react"
+import { Sparkles, Loader2, UploadCloud, Plus } from "lucide-react"
 import { suggestTransactionCategory } from "@/ai/flows/suggest-transaction-category"
 import { useToast } from "@/hooks/use-toast"
+import { useWalletStore } from "@/store/use-wallet-store"
+import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase"
+import { collection, addDoc, serverTimestamp, query, orderBy } from "firebase/firestore"
 
 const formSchema = z.object({
   description: z.string().min(2, "La descripción es requerida"),
   amount: z.string().refine((val) => !isNaN(Number(val)), "El monto debe ser un número"),
-  category: z.string().min(1, "La categoría es requerida"),
+  categoryId: z.string().min(1, "La categoría es requerida"),
   date: z.string(),
   type: z.enum(["income", "expense"]),
   paymentMethod: z.string().min(1, "El método es requerido")
 })
 
-const categories = ["Comida y Bebida", "Víveres", "Servicios", "Alquiler", "Salario", "Inversión", "Otros"]
-
 export function AddTransactionDialog() {
   const [isOpen, setIsOpen] = useState(false)
   const [isSuggesting, setIsSuggesting] = useState(false)
   const { toast } = useToast()
+  const { activeWallet } = useWalletStore()
+  const { user } = useUser()
+  const db = useFirestore()
+
+  const categoriesQuery = useMemoFirebase(() => {
+    if (!activeWallet) return null;
+    return query(collection(db, "wallets", activeWallet.id, "categories"), orderBy("name"));
+  }, [db, activeWallet]);
+
+  const { data: categories } = useCollection(categoriesQuery);
   
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       description: "",
       amount: "",
-      category: "",
+      categoryId: "",
       date: new Date().toISOString().split('T')[0],
       type: "expense",
-      paymentMethod: "Tarjeta"
+      paymentMethod: "Efectivo"
     }
   })
 
   const onSuggestCategory = async () => {
     const desc = form.getValues("description")
     if (!desc) {
-      toast({ title: "Por favor ingresa una descripción primero" })
+      toast({ title: "Ingresa una descripción para sugerir" })
       return
     }
+
+    if (!categories || categories.length === 0) return;
 
     setIsSuggesting(true)
     try {
       const result = await suggestTransactionCategory({
         transactionDescription: desc,
-        availableCategories: categories
+        availableCategories: categories.map(c => c.name)
       })
-      form.setValue("category", result.suggestedCategory)
-      toast({ title: `IA sugiere: ${result.suggestedCategory}` })
+      const found = categories.find(c => c.name === result.suggestedCategory);
+      if (found) {
+        form.setValue("categoryId", found.id)
+        toast({ title: `Sugerencia: ${found.name}` })
+      }
     } catch (e) {
-      toast({ variant: "destructive", title: "Error al obtener sugerencia de IA" })
+      toast({ variant: "destructive", title: "IA no disponible momentáneamente" })
     } finally {
       setIsSuggesting(false)
     }
   }
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    console.log(values)
-    setIsOpen(false)
-    toast({ title: "Transacción agregada con éxito" })
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    if (!activeWallet || !user) return;
+    
+    try {
+      await addDoc(collection(db, "wallets", activeWallet.id, "transactions"), {
+        walletId: activeWallet.id,
+        description: values.description,
+        amount: Number(values.amount),
+        categoryId: values.categoryId,
+        date: values.date,
+        type: values.type,
+        paymentMethod: values.paymentMethod,
+        walletOwnerId: activeWallet.ownerId,
+        walletMembersMap: activeWallet.members,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      setIsOpen(false)
+      form.reset()
+      toast({ title: "Transacción registrada" })
+    } catch (e) {
+      toast({ variant: "destructive", title: "Error al registrar" })
+    }
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button size="sm" className="bg-primary hover:bg-primary/90 w-full md:w-auto">
-          <Sparkles className="mr-2 h-4 w-4" />
-          Añadir Transacción
+          <Plus className="mr-2 h-4 w-4" />
+          Nueva Transacción
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px] w-[95vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Nueva Transacción</DialogTitle>
+          <DialogTitle>Registrar Transacción</DialogTitle>
           <DialogDescription>
-            Registra ingresos o gastos. ¡Prueba la IA para sugerir categorías!
+            Agrega un movimiento a <strong>{activeWallet?.name}</strong>.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -109,7 +145,7 @@ export function AddTransactionDialog() {
                   <FormLabel>Descripción</FormLabel>
                   <FormControl>
                     <div className="relative">
-                      <Input placeholder="ej. Suscripción Netflix" {...field} />
+                      <Input placeholder="ej. Suscripción SaaS" {...field} />
                       <Button
                         type="button"
                         size="icon"
@@ -170,19 +206,19 @@ export function AddTransactionDialog() {
 
             <FormField
               control={form.control}
-              name="category"
+              name="categoryId"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Categoría</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar categoría" />
+                        <SelectValue placeholder="Seleccionar" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {categories.map(cat => (
-                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                      {categories?.map(cat => (
+                        <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -210,7 +246,7 @@ export function AddTransactionDialog() {
                 name="paymentMethod"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Método de Pago</FormLabel>
+                    <FormLabel>Método</FormLabel>
                     <FormControl>
                       <Input placeholder="ej. Tarjeta" {...field} />
                     </FormControl>
@@ -220,13 +256,8 @@ export function AddTransactionDialog() {
               />
             </div>
 
-            <div className="p-4 border-2 border-dashed rounded-lg bg-slate-50 dark:bg-muted/10 text-center cursor-pointer hover:bg-slate-100 transition-colors">
-               <UploadCloud className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-               <p className="text-xs text-muted-foreground">Click para subir foto del recibo</p>
-            </div>
-
             <DialogFooter>
-              <Button type="submit" className="w-full">Guardar Transacción</Button>
+              <Button type="submit" className="w-full">Registrar</Button>
             </DialogFooter>
           </form>
         </Form>
