@@ -47,6 +47,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
 
 const navigationItems = [
   { name: "Panel Control", icon: LayoutDashboard, href: "/dashboard" },
@@ -96,7 +97,6 @@ export function AppSidebar() {
         updatedAt: serverTimestamp(),
       });
       
-      // Crear categorías por defecto
       const cats = ["Comida", "Salud", "Transporte", "Ocio", "Varios"];
       for (const cat of cats) {
         await addDoc(collection(db, "wallets", docRef.id, "categories"), {
