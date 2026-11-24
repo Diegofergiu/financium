@@ -1,4 +1,4 @@
-# **App Name**: Financium
+# **App Name**: Mi Bolsillo
 
 ## Core Features:
 

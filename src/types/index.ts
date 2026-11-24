@@ -1,62 +1,73 @@
+import type { Timestamp } from 'firebase/firestore';
+
 export type UserRole = 'owner' | 'editor' | 'reader';
 
-export interface WalletMember {
-  uid: string;
-  email: string;
-  role: UserRole;
+/** Campos de autorización desnormalizados que exigen las reglas de Firestore. */
+export interface WalletAuthFields {
+  walletOwnerId: string;
+  walletMembersMap: Record<string, UserRole>;
 }
 
 export interface Wallet {
   id: string;
   name: string;
   ownerId: string;
-  members: WalletMember[];
-  createdAt: number;
+  members: Record<string, UserRole>;
+  currency?: string;
+  createdAt?: Timestamp | null;
+  updatedAt?: Timestamp | null;
 }
+
+export type CategoryKind = 'expense' | 'income' | 'both';
 
 export interface Category {
   id: string;
   name: string;
-  color: string; // Hex code
-  icon?: string;
+  colorHex: string;
+  kind?: CategoryKind;
 }
 
 export type TransactionType = 'income' | 'expense';
 
 export interface Transaction {
   id: string;
-  walletId: string;
-  amount: number;
-  date: string; // YYYY-MM-DD
-  categoryId: string;
-  description: string;
   type: TransactionType;
-  paymentMethod: string;
-  attachmentUrl?: string;
-  createdAt: number;
+  amount: number;
+  /** Fecha local en formato YYYY-MM-DD */
+  date: string;
+  description: string;
+  categoryId: string;
+  paymentMethod?: string;
+  notes?: string;
+  checkId?: string;
+  createdAt?: Timestamp | null;
 }
 
-export type CheckStatus = 'pending' | 'cleared' | 'cancelled';
-export type CheckType = 'issued' | 'collectible';
+export type CheckType = 'issued' | 'toCollect';
+export type CheckStatus = 'pending' | 'cleared' | 'rejected' | 'cancelled';
 
 export interface Check {
   id: string;
-  walletId: string;
-  number: string;
+  type: CheckType;
+  checkNumber: string;
   bank: string;
-  partyName: string; // Issuer or Recipient
+  issuerRecipient: string;
+  /** Fecha local en formato YYYY-MM-DD */
   dueDate: string;
   amount: number;
   status: CheckStatus;
-  type: CheckType;
-  attachmentUrl?: string;
-  createdAt: number;
+  isCleared: boolean;
+  clearedAt?: string | null;
+  notes?: string;
+  transactionId?: string | null;
+  createdAt?: Timestamp | null;
 }
 
 export interface Budget {
   id: string;
-  walletId: string;
+  name: string;
   categoryId: string;
-  limit: number;
-  period: 'monthly';
+  limitAmount: number;
+  periodType: 'monthly';
+  createdAt?: Timestamp | null;
 }

@@ -1,119 +1,83 @@
 /**
- * Core Philosophy:
- * This ruleset enforces a strict user-ownership model for profile data and a collaborative 
- * Shared-Access model for financial Wallets. Authorization is primarily driven by a 
- * "Membership Map" pattern where UIDs are mapped to roles directly within documents.
+ * Reglas de seguridad de Mi Bolsillo.
  *
- * Data Structure:
- * - /users/{userId}: Private user profiles, restricted to the individual user.
- * - /wallets/{walletId}: Collaborative financial workspaces owned by one user and shared with others.
- * - /wallets/{walletId}/{subcollection}: Financial records (Transactions, Budgets, etc.) that inherit 
- *   access rights from the parent Wallet.
- *
- * Key Security Decisions:
- * - Denormalization for Authorization: To ensure performance and avoid complex rules, subcollection 
- *   documents (like Transactions) are expected to contain 'walletOwnerId' and 'walletMembersMap' fields.
- * - Rules are not Filters: Access to subcollections is verified against the parent Wallet document 
- *   membership during 'list' operations to ensure users only see data they are authorized to access.
- * - Prototyping Flexibility: Logic focuses on 'Who' can access data (Authorization) rather than 'What' 
- *   the data looks like (Schema Validation), allowing for rapid frontend iteration.
- * - Immutability: Critical relational fields (like 'ownerId' or 'walletId') are protected against 
- *   modification after creation to maintain data integrity.
+ * - /users/{userId}: perfil privado, sólo lo ve y edita su dueño.
+ * - /wallets/{walletId}: "libros" contables. Acceso para el dueño (ownerId) o
+ *   quien figure en el mapa members (uid -> rol).
+ * - /wallets/{walletId}/{sub}/{docId}: datos del libro (movimientos, cheques,
+ *   presupuestos, categorías). Cada documento lleva walletOwnerId y
+ *   walletMembersMap desnormalizados; además, para crear se verifica contra el
+ *   libro real (getAfter permite crear el libro y sus categorías en un mismo lote).
  */
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- HELPER FUNCTIONS ---
-
-    /** @description Checks if the request is from an authenticated user. */
-    function isSignedIn() {
+    function signedIn() {
       return request.auth != null;
     }
 
-    /** @description Checks if the authenticated user's UID matches the provided userId. */
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+    function hasAccess(data) {
+      return signedIn() && (data.ownerId == request.auth.uid || request.auth.uid in data.members);
     }
 
-    /** @description Checks if a document exists and is owned by the authenticated user. */
-    function isExistingOwner(userId) {
-      return resource != null && isOwner(userId);
+    function canWriteWallet(data) {
+      return signedIn() && (
+        data.ownerId == request.auth.uid ||
+        (request.auth.uid in data.members && data.members[request.auth.uid] in ['owner', 'editor'])
+      );
     }
 
-    /** @description Checks if the user is the owner of the wallet based on a field. */
-    function isWalletOwner(ownerId) {
-      return isSignedIn() && request.auth.uid == ownerId;
+    function walletPath(walletId) {
+      return /databases/$(database)/documents/wallets/$(walletId);
     }
 
-    /** @description Checks if the user is a member in a membership map (UID -> Role). */
-    function isWalletMember(membersMap) {
-      return isSignedIn() && membersMap[request.auth.uid] != null;
-    }
-
-    /** @description Performs a lookup on the parent wallet to verify access for listing subcollections. */
-    function canAccessWallet(walletId) {
-      let wallet = get(/databases/$(database)/documents/wallets/$(walletId)).data;
-      return isWalletOwner(wallet.ownerId) || isWalletMember(wallet.members);
-    }
-
-    // --- COLLECTION RULES ---
-
-    /**
-     * @description Rules for user profile documents.
-     * @path /users/{userId}
-     * @allow (get, create, update) if the authenticated user matches the document ID.
-     * @deny (list) to prevent user enumeration.
-     * @principle Restricts access to a user's own data tree.
-     */
     match /users/{userId} {
-      allow get: if isOwner(userId);
+      allow get: if signedIn() && request.auth.uid == userId;
       allow list: if false;
-      allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
-      allow delete: if isExistingOwner(userId);
+      allow create: if signedIn() && request.auth.uid == userId && request.resource.data.id == userId;
+      allow update: if signedIn() && request.auth.uid == userId && request.resource.data.id == userId;
+      allow delete: if signedIn() && request.auth.uid == userId;
     }
 
-    /**
-     * @description Shared financial workspaces. Access controlled by 'ownerId' and 'members' map.
-     * @path /wallets/{walletId}
-     * @allow (get, update) if user is owner or listed in members.
-     * @deny (delete) if the user is not the designated owner.
-     * @principle Shared Access (Closed Collaborators) via Membership Map.
-     */
     match /wallets/{walletId} {
-      allow get: if isWalletOwner(resource.data.ownerId) || isWalletMember(resource.data.members);
-      allow list: if isSignedIn(); // Filtering is handled by the membership check in the query
-      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if (isWalletOwner(resource.data.ownerId) || isWalletMember(resource.data.members)) && request.resource.data.ownerId == resource.data.ownerId;
-      allow delete: if resource != null && isWalletOwner(resource.data.ownerId);
+      allow get, list: if hasAccess(resource.data);
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.members is map
+        && request.resource.data.members[request.auth.uid] == 'owner'
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 80;
+      allow update: if canWriteWallet(resource.data)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0;
+      allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+
+      match /{sub}/{docId} {
+        allow get: if hasAccess(get(walletPath(walletId)).data);
+        allow list: if hasAccess(get(walletPath(walletId)).data);
+
+        allow create: if canWriteWallet(getAfter(walletPath(walletId)).data)
+          && request.resource.data.walletOwnerId == getAfter(walletPath(walletId)).data.ownerId
+          && validAmount(sub);
+
+        allow update: if canWriteWallet(get(walletPath(walletId)).data)
+          && request.resource.data.walletOwnerId == resource.data.walletOwnerId
+          && validAmount(sub);
+
+        // Al borrar un libro entero puede que el documento del libro ya no exista
+        allow delete: if signedIn() && (
+          resource.data.walletOwnerId == request.auth.uid ||
+          (exists(walletPath(walletId)) && canWriteWallet(get(walletPath(walletId)).data))
+        );
+      }
     }
 
-    /**
-     * @description Financial sub-entities within a wallet (Members, Categories, Payments, Transactions, Checks, Budgets).
-     * @path /wallets/{walletId}/{collection}/{docId}
-     * @allow (create, update, delete) based on denormalized wallet authorization fields.
-     * @deny (list) if user is not a member of the parent wallet.
-     * @principle Authorization Independence via denormalized membership data.
-     */
-    match /wallets/{walletId}/{allSubcollections=**} {
-      
-      // READ RULES
-      allow get: if isWalletOwner(resource.data.walletOwnerId) || isWalletMember(resource.data.walletMembersMap);
-      allow list: if canAccessWallet(walletId);
-
-      // WRITE RULES
-      // For creation, we ensure the new document's auth fields correctly reflect the user's rights
-      allow create: if isSignedIn() && (request.resource.data.walletOwnerId == request.auth.uid || request.resource.data.walletMembersMap[request.auth.uid] != null);
-      
-      // For updates, we verify the existing document ownership and ensure the link to the wallet is immutable
-      allow update: if resource != null && 
-                    (isWalletOwner(resource.data.walletOwnerId) || isWalletMember(resource.data.walletMembersMap)) && 
-                    request.resource.data.walletOwnerId == resource.data.walletOwnerId;
-
-      // For deletion, verify existing ownership
-      allow delete: if resource != null && (isWalletOwner(resource.data.walletOwnerId) || isWalletMember(resource.data.walletMembersMap));
+    function validAmount(sub) {
+      return !(sub in ['transactions', 'checks'])
+        || (request.resource.data.amount is number && request.resource.data.amount > 0);
     }
   }
 }

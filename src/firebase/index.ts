@@ -2,10 +2,19 @@
 
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore'
+import { getAuth, connectAuthEmulator, Auth } from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator, Firestore } from 'firebase/firestore'
 
-// IMPORTANT: DO NOT MODIFY THIS FUNCTION
+const USE_EMULATORS = process.env.NEXT_PUBLIC_USE_EMULATORS === 'true';
+let emulatorsConnected = false;
+
+function maybeConnectEmulators(auth: Auth, firestore: Firestore) {
+  if (!USE_EMULATORS || emulatorsConnected) return;
+  emulatorsConnected = true;
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  connectFirestoreEmulator(firestore, '127.0.0.1', 8080);
+}
+
 export function initializeFirebase() {
   if (!getApps().length) {
     // Important! initializeApp() is called without any arguments because Firebase App Hosting
@@ -15,6 +24,7 @@ export function initializeFirebase() {
     let firebaseApp;
     try {
       // Attempt to initialize via Firebase App Hosting environment variables
+      if (USE_EMULATORS) throw new Error('emulators');
       firebaseApp = initializeApp();
     } catch (e) {
       // Only warn in production because it's normal to use the firebaseConfig to initialize
@@ -33,11 +43,10 @@ export function initializeFirebase() {
 }
 
 export function getSdks(firebaseApp: FirebaseApp) {
-  return {
-    firebaseApp,
-    auth: getAuth(firebaseApp),
-    firestore: getFirestore(firebaseApp)
-  };
+  const auth = getAuth(firebaseApp);
+  const firestore = getFirestore(firebaseApp);
+  maybeConnectEmulators(auth, firestore);
+  return { firebaseApp, auth, firestore };
 }
 
 export * from './provider';

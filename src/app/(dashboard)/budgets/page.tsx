@@ -1,98 +1,141 @@
 'use client';
 
-import { useWalletStore } from "@/store/use-wallet-store";
-import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, query, orderBy, addDoc, serverTimestamp } from "firebase/firestore";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { Target, Plus, AlertCircle, Loader2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useMemo, useState } from 'react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { deleteDoc, doc } from 'firebase/firestore';
+import { MoreVertical, Pencil, Plus, Target, Trash2 } from 'lucide-react';
+import { useFirestore } from '@/firebase';
+import { useWallet } from '@/components/providers/wallet-provider';
+import { BudgetDialog } from '@/components/budgets/budget-dialog';
+import { PageHeader, EmptyState, CategoryDot, ConfirmDialog } from '@/components/shared/ui-bits';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/hooks/use-toast';
+import { formatMoney } from '@/lib/format';
+import { monthSpentByCategory } from '@/lib/alerts';
+import { cn } from '@/lib/utils';
+import type { Budget } from '@/types';
 
 export default function BudgetsPage() {
-  const { activeWallet } = useWalletStore();
   const db = useFirestore();
+  const { toast } = useToast();
+  const { budgets, transactions, categories, currency, activeWallet, isDataLoading } = useWallet();
+  const [dialog, setDialog] = useState<{ open: boolean; budget: Budget | null }>({ open: false, budget: null });
+  const [toDelete, setToDelete] = useState<Budget | null>(null);
 
-  const budgetsQuery = useMemoFirebase(() => {
-    if (!activeWallet) return null;
-    return query(collection(db, "wallets", activeWallet.id, "budgets"), orderBy("createdAt", "desc"));
-  }, [db, activeWallet]);
+  const spent = useMemo(() => monthSpentByCategory(transactions), [transactions]);
+  const totalLimit = budgets.reduce((s, b) => s + b.limitAmount, 0);
+  const totalUsed = budgets.reduce((s, b) => s + (spent.get(b.categoryId) ?? 0), 0);
+  const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+  const dayOfMonth = new Date().getDate();
 
-  const transactionsQuery = useMemoFirebase(() => {
-    if (!activeWallet) return null;
-    return query(collection(db, "wallets", activeWallet.id, "transactions"), orderBy("date", "desc"));
-  }, [db, activeWallet]);
-
-  const { data: budgets, isLoading: isBudgetsLoading } = useCollection(budgetsQuery);
-  const { data: transactions } = useCollection(transactionsQuery);
-  const { data: categories } = useCollection(useMemoFirebase(() => activeWallet ? collection(db, "wallets", activeWallet.id, "categories") : null, [db, activeWallet]));
-
-  if (!activeWallet) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
-        <AlertCircle className="h-12 w-12 text-muted-foreground" />
-        <h2 className="text-xl font-bold">No hay un Libro activo</h2>
-        <p className="text-muted-foreground">Selecciona un libro para gestionar presupuestos.</p>
-      </div>
-    );
-  }
-
-  const getSpentAmount = (categoryId: string) => {
-    if (!transactions) return 0;
-    return transactions
-      .filter(t => t.categoryId === categoryId && t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
+  const remove = async () => {
+    if (!toDelete || !activeWallet) return;
+    try {
+      await deleteDoc(doc(db, 'wallets', activeWallet.id, 'budgets', toDelete.id));
+      toast({ title: 'Presupuesto eliminado' });
+    } catch {
+      toast({ variant: 'destructive', title: 'No se pudo eliminar' });
+    }
+    setToDelete(null);
   };
 
   return (
-    <div className="flex flex-col gap-6 pt-4">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-accent flex items-center justify-center text-white shrink-0">
-            <Target className="h-6 w-6" />
-          </div>
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight">Presupuestos</h2>
-            <p className="text-muted-foreground">Controla tus límites de gasto por categoría.</p>
-          </div>
-        </div>
-        <Button size="sm" className="bg-primary hover:bg-primary/90">
-          <Plus className="mr-2 h-4 w-4" />
-          Nuevo Presupuesto
-        </Button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        icon={Target}
+        title="Presupuestos"
+        description={<span className="first-letter:uppercase">Topes de gasto para {format(new Date(), 'MMMM', { locale: es })}. Se reinician cada mes.</span>}
+        actions={
+          <Button onClick={() => setDialog({ open: true, budget: null })}>
+            <Plus /> Nuevo presupuesto
+          </Button>
+        }
+      />
 
-      {isBudgetsLoading ? (
-        <div className="flex justify-center p-12">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      ) : budgets && budgets.length > 0 ? (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {budgets.map((budget) => {
-            const spent = getSpentAmount(budget.categoryId);
-            const percent = Math.min((spent / budget.limitAmount) * 100, 100);
-            const category = categories?.find(c => c.id === budget.categoryId);
-            const isOver = spent > budget.limitAmount;
+      {budgets.length > 0 && (
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <p className="text-sm text-muted-foreground">Gastado en categorías con presupuesto</p>
+                <p className="tabular font-headline text-2xl font-extrabold">
+                  {formatMoney(totalUsed, currency)} <span className="text-base font-semibold text-muted-foreground">de {formatMoney(totalLimit, currency)}</span>
+                </p>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Día {dayOfMonth} de {daysInMonth}
+              </p>
+            </div>
+            <div className="relative mt-4 h-3 overflow-hidden rounded-full bg-muted">
+              <div className={cn('h-full rounded-full', totalUsed > totalLimit ? 'bg-destructive' : 'bg-primary')} style={{ width: `${Math.min(100, (totalUsed / (totalLimit || 1)) * 100)}%` }} />
+              {/* Marca de "dónde debería ir" según el día del mes */}
+              <div className="absolute inset-y-0 w-0.5 bg-foreground/40" style={{ left: `${(dayOfMonth / daysInMonth) * 100}%` }} title="Ritmo ideal según el día del mes" />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
+      {isDataLoading ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-40 rounded-2xl" />
+          ))}
+        </div>
+      ) : budgets.length ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {budgets.map((b) => {
+            const used = spent.get(b.categoryId) ?? 0;
+            const pct = b.limitAmount ? used / b.limitAmount : 0;
+            const cat = categories.find((c) => c.id === b.categoryId);
+            const left = b.limitAmount - used;
+            const state = pct >= 1 ? 'over' : pct >= 0.8 ? 'near' : 'ok';
             return (
-              <Card key={budget.id} className="border-none shadow-sm">
-                <CardHeader className="pb-2">
-                  <div className="flex justify-between items-start">
-                    <CardTitle className="text-lg">{budget.name}</CardTitle>
-                    <Badge variant={isOver ? "destructive" : "secondary"}>
-                      {category?.name || "Categoría"}
-                    </Badge>
+              <Card key={b.id} className={cn(state === 'over' && 'border-destructive/40', state === 'near' && 'border-warning/50')}>
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-2 truncate font-headline text-lg font-bold">
+                        {cat?.name === b.name && <CategoryDot color={cat?.colorHex} className="h-3 w-3" />}
+                        {b.name}
+                      </p>
+                      {(!cat || cat.name !== b.name) && (
+                        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <CategoryDot color={cat?.colorHex} /> {cat?.name ?? 'Categoría eliminada'}
+                        </p>
+                      )}
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="-mr-2 -mt-2 h-9 w-9 rounded-full" aria-label="Opciones">
+                          <MoreVertical />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="rounded-xl">
+                        <DropdownMenuItem className="gap-2" onClick={() => setDialog({ open: true, budget: b })}>
+                          <Pencil className="h-4 w-4" /> Editar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive" onClick={() => setToDelete(b)}>
+                          <Trash2 className="h-4 w-4" /> Eliminar
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
-                  <CardDescription>Período: {budget.periodType}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Gastado: ${spent.toLocaleString()}</span>
-                    <span className="font-bold">Límite: ${budget.limitAmount.toLocaleString()}</span>
+                  <p className="tabular mt-4 text-2xl font-extrabold">
+                    {formatMoney(used, currency)}
+                    <span className="ml-1 text-sm font-medium text-muted-foreground">/ {formatMoney(b.limitAmount, currency)}</span>
+                  </p>
+                  <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={cn('h-full rounded-full transition-all', state === 'over' ? 'bg-destructive' : state === 'near' ? 'bg-warning' : 'bg-primary')}
+                      style={{ width: `${Math.min(100, pct * 100)}%` }}
+                    />
                   </div>
-                  <Progress value={percent} className={isOver ? "bg-red-100" : ""} />
-                  <p className={`text-xs text-right font-medium ${isOver ? "text-red-500" : "text-muted-foreground"}`}>
-                    {isOver ? `Excedido por $${(spent - budget.limitAmount).toLocaleString()}` : `${Math.round(percent)}% utilizado`}
+                  <p className={cn('mt-2 text-sm font-medium', state === 'over' ? 'text-destructive' : state === 'near' ? 'text-warning' : 'text-muted-foreground')}>
+                    {state === 'over' ? `Te pasaste por ${formatMoney(-left, currency)}` : `Te quedan ${formatMoney(left, currency)} (${Math.round(pct * 100)}% usado)`}
                   </p>
                 </CardContent>
               </Card>
@@ -100,13 +143,26 @@ export default function BudgetsPage() {
           })}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border-2 border-dashed">
-          <Target className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold">Sin presupuestos</h3>
-          <p className="text-muted-foreground mb-6">Aún no has definido límites de gasto para este libro.</p>
-          <Button variant="outline">Crear el primero</Button>
-        </div>
+        <EmptyState
+          icon={Target}
+          title="Sin presupuestos todavía"
+          description="Definí cuánto querés gastar por mes en cada categoría (por ejemplo, Supermercado) y te avisamos cuando estés cerca del límite."
+          action={
+            <Button onClick={() => setDialog({ open: true, budget: null })}>
+              <Plus /> Crear el primero
+            </Button>
+          }
+        />
       )}
+
+      <BudgetDialog open={dialog.open} onOpenChange={(open) => setDialog((d) => ({ ...d, open }))} budget={dialog.budget} />
+      <ConfirmDialog
+        open={!!toDelete}
+        onOpenChange={(o) => !o && setToDelete(null)}
+        title="¿Eliminar este presupuesto?"
+        description="Tus movimientos no se borran; sólo se quita el tope."
+        onConfirm={remove}
+      />
     </div>
   );
 }
