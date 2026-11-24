@@ -15,7 +15,7 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 export function CashflowChart() {
-  const { transactions, currency } = useWallet();
+  const { bookTransactions: transactions, currency } = useWallet();
 
   const data = useMemo(() => {
     const months = Array.from({ length: 6 }, (_, i) => subMonths(new Date(), 5 - i));

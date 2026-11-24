@@ -13,6 +13,7 @@ import { TransactionList } from '@/components/transactions/transaction-list';
 import { CheckCard } from '@/components/checks/check-card';
 import { CashflowChart } from '@/components/dashboard/cashflow-chart';
 import { CategoryBreakdown } from '@/components/dashboard/category-breakdown';
+import { InvitesBanner, PendingRecurringCard } from '@/components/dashboard/extras';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/shared/ui-bits';
@@ -31,18 +32,19 @@ function greeting() {
 
 export default function DashboardPage() {
   const { user } = useUser();
-  const { transactions, checks, budgets, categories, currency, activeWallet, isDataLoading } = useWallet();
+  const { transactions: allTransactions, bookTransactions: transactions, checks, budgets, categories, currency, activeWallet, isDataLoading, accounts, balances, canEdit } = useWallet();
   const { alerts } = useNotifications();
   const { openTransaction } = useTransactionDialog();
 
   const stats = useMemo(() => {
     const month = format(new Date(), 'yyyy-MM');
+    // Saldo = suma de las cuentas en la moneda del libro (incluye saldos iniciales y transferencias)
     let balance = 0;
+    for (const a of accounts) if (a.currency === currency && !a.archived) balance += balances.get(a.id) ?? 0;
     let income = 0;
     let expense = 0;
     for (const t of transactions) {
       const v = Number(t.amount) || 0;
-      balance += t.type === 'income' ? v : -v;
       if (t.date?.startsWith(month)) {
         if (t.type === 'income') income += v;
         else expense += v;
@@ -52,7 +54,7 @@ export default function DashboardPage() {
     const toCollect = pending.filter((c) => c.type === 'toCollect').reduce((s, c) => s + c.amount, 0);
     const toPay = pending.filter((c) => c.type === 'issued').reduce((s, c) => s + c.amount, 0);
     return { balance, income, expense, toCollect, toPay, pendingCount: pending.length };
-  }, [transactions, checks]);
+  }, [transactions, checks, accounts, balances, currency]);
 
   const upcoming = useMemo(() => checks.filter((c) => c.status === 'pending').slice(0, 4), [checks]);
   const spent = useMemo(() => monthSpentByCategory(transactions), [transactions]);
@@ -82,6 +84,8 @@ export default function DashboardPage() {
         </h1>
       </div>
 
+      <InvitesBanner />
+
       {critical.length > 0 && (
         <Link href={critical[0].href} className="flex items-center gap-3 rounded-2xl border border-destructive/30 bg-destructive/[0.06] p-4 text-sm transition-colors hover:bg-destructive/10">
           <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" />
@@ -104,7 +108,7 @@ export default function DashboardPage() {
             </p>
             <p className="tabular mt-1 font-headline text-4xl font-extrabold tracking-tight sm:text-5xl">{formatMoney(stats.balance, currency)}</p>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:flex">
+          <div className={cn('grid grid-cols-2 gap-2 sm:flex', !canEdit && 'hidden')}>
             <Button onClick={() => openTransaction({ type: 'income' })} className="h-11 bg-white text-[#0B3B35] hover:bg-white/90">
               <Plus /> Ingreso
             </Button>
@@ -161,8 +165,8 @@ export default function DashboardPage() {
             </Button>
           </CardHeader>
           <CardContent className="px-2 sm:px-3">
-            {transactions.length ? (
-              <TransactionList transactions={transactions.slice(0, 6)} />
+            {allTransactions.length ? (
+              <TransactionList transactions={allTransactions.slice(0, 6)} />
             ) : (
               <EmptyState
                 icon={ArrowDownLeft}
@@ -176,6 +180,7 @@ export default function DashboardPage() {
         </Card>
 
         <div className="space-y-4 lg:col-span-2">
+          <PendingRecurringCard />
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
               <CardTitle>Próximos cheques</CardTitle>

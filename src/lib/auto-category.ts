@@ -4,7 +4,7 @@ import type { Category } from '@/types';
 const RULES: { match: RegExp; names: string[] }[] = [
   { match: /super|coto|carrefour|d[ií]a\b|jumbo|disco|chango|almac[eé]n|verduler|carnicer|panader|kiosco|mercado\b/i, names: ['Supermercado', 'Comida'] },
   { match: /luz|edenor|edesur|gas|metrogas|agua|aysa|internet|fibertel|telecentro|movistar|claro|personal|celular|cable|netflix|spotify|expensas/i, names: ['Servicios'] },
-  { match: /alquiler|inmobiliaria|hipoteca|arreglo|plomer|electricista|pintur/i, names: ['Alquiler / Vivienda'] },
+  { match: /alquiler|inmobiliaria|expensa|hipoteca|arreglo|plomer|electricista|pintur/i, names: ['Alquiler / Vivienda'] },
   { match: /farmacia|m[eé]dic|doctor|obra social|prepaga|osde|swiss|dentist|an[aá]lisis|cl[ií]nica|hospital/i, names: ['Salud'] },
   { match: /nafta|combustible|ypf|shell|axion|sube|colectivo|tren|subte|taxi|uber|cabify|didi|peaje|estacionamiento|auto|seguro auto/i, names: ['Transporte'] },
   { match: /afip|arca|monotributo|ingresos brutos|abl|patente|impuesto|rentas|municipal/i, names: ['Impuestos'] },

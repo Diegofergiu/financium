@@ -8,11 +8,17 @@ export interface WalletAuthFields {
   walletMembersMap: Record<string, UserRole>;
 }
 
+export interface MemberInfo {
+  email: string;
+  name?: string;
+}
+
 export interface Wallet {
   id: string;
   name: string;
   ownerId: string;
   members: Record<string, UserRole>;
+  memberInfo?: Record<string, MemberInfo>;
   currency?: string;
   createdAt?: Timestamp | null;
   updatedAt?: Timestamp | null;
@@ -27,7 +33,56 @@ export interface Category {
   kind?: CategoryKind;
 }
 
-export type TransactionType = 'income' | 'expense';
+export type TransactionType = 'income' | 'expense' | 'transfer';
+
+/** Foto o PDF adjunto (factura, boleta, cheque) guardado en Firebase Storage. */
+export interface Attachment {
+  path: string;
+  url: string;
+  name: string;
+  contentType: string;
+  size: number;
+}
+
+export type AccountKind = 'cash' | 'bank' | 'wallet' | 'savings' | 'card';
+
+export interface Account {
+  id: string;
+  name: string;
+  kind: AccountKind;
+  currency: string;
+  initialBalance: number;
+  colorHex: string;
+  order?: number;
+  archived?: boolean;
+}
+
+export interface Recurring {
+  id: string;
+  type: 'income' | 'expense';
+  amount: number;
+  description: string;
+  categoryId: string;
+  paymentMethod?: string;
+  accountId?: string;
+  /** Día del mes (1-31; si el mes es más corto se usa el último día). */
+  dayOfMonth: number;
+  /** true: se anota solo ese día. false: sólo recuerda y se anota con un toque. */
+  autoCreate: boolean;
+  active: boolean;
+  lastCreatedMonth?: string | null;
+}
+
+export interface Invite {
+  id: string;
+  walletId: string;
+  walletName: string;
+  email: string;
+  role: Exclude<UserRole, 'owner'>;
+  invitedBy: string;
+  invitedByName: string;
+  status: 'pending' | 'accepted' | 'declined';
+}
 
 export interface Transaction {
   id: string;
@@ -40,6 +95,12 @@ export interface Transaction {
   paymentMethod?: string;
   notes?: string;
   checkId?: string;
+  recurringId?: string;
+  accountId?: string;
+  /** Sólo transferencias: cuenta destino y monto recibido (si la moneda es distinta). */
+  toAccountId?: string;
+  toAmount?: number;
+  attachments?: Attachment[];
   createdAt?: Timestamp | null;
 }
 
@@ -60,6 +121,8 @@ export interface Check {
   clearedAt?: string | null;
   notes?: string;
   transactionId?: string | null;
+  accountId?: string;
+  attachments?: Attachment[];
   createdAt?: Timestamp | null;
 }
 

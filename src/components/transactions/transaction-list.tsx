@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo } from 'react';
-import { ArrowDownLeft, ArrowUpRight, Ticket } from 'lucide-react';
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Repeat, Ticket } from 'lucide-react';
+import { AttachmentBadge } from '@/components/shared/attachment-picker';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { useTransactionDialog } from './transaction-dialog';
 import { CategoryDot, Money } from '@/components/shared/ui-bits';
@@ -19,31 +20,58 @@ function dayLabel(date: string) {
 }
 
 export function TransactionRow({ t }: { t: Transaction }) {
-  const { categories, currency } = useWallet();
+  const { categories, currency, accounts, defaultAccountId } = useWallet();
   const { openTransaction } = useTransactionDialog();
   const cat = categories.find((c) => c.id === t.categoryId);
   const isIncome = t.type === 'income';
+  const isTransfer = t.type === 'transfer';
+  const acc = accounts.find((a) => a.id === (t.accountId || defaultAccountId));
+  const toAcc = accounts.find((a) => a.id === t.toAccountId);
+  const txCurrency = acc?.currency || currency;
+  const color = isTransfer ? '#64748b' : cat?.colorHex ?? '#a8a29e';
 
   return (
     <button
       onClick={() => openTransaction({ transaction: t })}
       className="flex w-full items-center gap-3 rounded-xl px-2 py-2.5 text-left transition-colors hover:bg-muted/60 sm:px-3"
     >
-      <span
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-        style={{ backgroundColor: `${cat?.colorHex ?? '#a8a29e'}1f`, color: cat?.colorHex ?? '#78716c' }}
-      >
-        {t.checkId ? <Ticket className="h-5 w-5" /> : isIncome ? <ArrowDownLeft className="h-5 w-5" /> : <ArrowUpRight className="h-5 w-5" />}
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: `${color}1f`, color }}>
+        {isTransfer ? (
+          <ArrowLeftRight className="h-5 w-5" />
+        ) : t.checkId ? (
+          <Ticket className="h-5 w-5" />
+        ) : t.recurringId ? (
+          <Repeat className="h-5 w-5" />
+        ) : isIncome ? (
+          <ArrowDownLeft className="h-5 w-5" />
+        ) : (
+          <ArrowUpRight className="h-5 w-5" />
+        )}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[15px] font-semibold">{t.description}</span>
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-[15px] font-semibold">{t.description}</span>
+          <AttachmentBadge count={t.attachments?.length} />
+        </span>
         <span className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-          <CategoryDot color={cat?.colorHex} className="h-2 w-2" />
-          {cat?.name ?? 'Sin categoría'}
-          {t.paymentMethod ? <span className="hidden sm:inline">· {t.paymentMethod}</span> : null}
+          {isTransfer ? (
+            <>
+              {acc?.name ?? 'Cuenta'} → {toAcc?.name ?? 'Cuenta'}
+            </>
+          ) : (
+            <>
+              <CategoryDot color={cat?.colorHex} className="h-2 w-2" />
+              {cat?.name ?? 'Sin categoría'}
+              {accounts.length > 1 && acc ? <span>· {acc.name}</span> : t.paymentMethod ? <span className="hidden sm:inline">· {t.paymentMethod}</span> : null}
+            </>
+          )}
         </span>
       </span>
-      <Money amount={t.amount} currency={currency} type={t.type} signed className={cn('text-[15px]', isIncome && 'text-income')} />
+      {isTransfer ? (
+        <Money amount={t.amount} currency={txCurrency} className="text-[15px] text-muted-foreground" />
+      ) : (
+        <Money amount={t.amount} currency={txCurrency} type={t.type as 'income' | 'expense'} signed className={cn('text-[15px]', isIncome && 'text-income')} />
+      )}
     </button>
   );
 }

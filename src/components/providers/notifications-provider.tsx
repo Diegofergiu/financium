@@ -79,7 +79,7 @@ async function showSystemNotification(title: string, body: string, url: string, 
 }
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
-  const { checks, budgets, transactions, categories, currency, isDataLoading } = useWallet();
+  const { checks, budgets, bookTransactions: transactions, categories, currency, isDataLoading, recurring } = useWallet();
   const [notifyDays, setNotifyDaysState] = useState(7);
   const [seen, setSeen] = useState<Set<string>>(new Set());
   const [permission, setPermission] = useState<PermissionState>('default');
@@ -126,8 +126,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, [enabled, permission, registerServerPush]);
 
   const alerts = useMemo(
-    () => (isDataLoading ? [] : computeAlerts({ checks, budgets, transactions, categories, currency, notifyDays })),
-    [checks, budgets, transactions, categories, currency, notifyDays, isDataLoading]
+    () => (isDataLoading ? [] : computeAlerts({ checks, budgets, transactions, categories, currency, notifyDays, recurring })),
+    [checks, budgets, transactions, categories, currency, notifyDays, isDataLoading, recurring]
   );
 
   const unreadCount = alerts.filter((a) => !seen.has(a.id)).length;

@@ -3,17 +3,40 @@
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, Auth } from 'firebase/auth';
-import { getFirestore, connectFirestoreEmulator, Firestore } from 'firebase/firestore'
+import {
+  getFirestore,
+  initializeFirestore,
+  connectFirestoreEmulator,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  Firestore,
+} from 'firebase/firestore';
+import { getStorage, connectStorageEmulator, FirebaseStorage } from 'firebase/storage';
 
 const USE_EMULATORS = process.env.NEXT_PUBLIC_USE_EMULATORS === 'true';
 let emulatorsConnected = false;
 
-function maybeConnectEmulators(auth: Auth, firestore: Firestore) {
+function maybeConnectEmulators(auth: Auth, firestore: Firestore, storage: FirebaseStorage) {
   if (!USE_EMULATORS || emulatorsConnected) return;
   emulatorsConnected = true;
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
   connectFirestoreEmulator(firestore, '127.0.0.1', 8080);
+  connectStorageEmulator(storage, '127.0.0.1', 9199);
 }
+
+/** Firestore con caché local: la app abre y permite anotar aunque no haya señal. */
+function createFirestore(app: FirebaseApp): Firestore {
+  try {
+    return initializeFirestore(app, {
+      localCache: typeof window === 'undefined' ? undefined : persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
+  } catch {
+    // Ya inicializado (recarga en caliente) o el navegador no permite IndexedDB
+    return getFirestore(app);
+  }
+}
+
+let cached: { firebaseApp: FirebaseApp; auth: Auth; firestore: Firestore; storage: FirebaseStorage } | null = null;
 
 export function initializeFirebase() {
   if (!getApps().length) {
@@ -43,10 +66,19 @@ export function initializeFirebase() {
 }
 
 export function getSdks(firebaseApp: FirebaseApp) {
+  if (cached && cached.firebaseApp === firebaseApp) return cached;
   const auth = getAuth(firebaseApp);
-  const firestore = getFirestore(firebaseApp);
-  maybeConnectEmulators(auth, firestore);
-  return { firebaseApp, auth, firestore };
+  const firestore = createFirestore(firebaseApp);
+  const bucket = firebaseApp.options.storageBucket || `${firebaseApp.options.projectId}.firebasestorage.app`;
+  const storage = getStorage(firebaseApp, `gs://${bucket}`);
+  maybeConnectEmulators(auth, firestore, storage);
+  cached = { firebaseApp, auth, firestore, storage };
+  return cached;
+}
+
+export function getFirebaseStorage() {
+  if (!cached) throw new Error('Firebase no inicializado');
+  return cached.storage;
 }
 
 export * from './provider';

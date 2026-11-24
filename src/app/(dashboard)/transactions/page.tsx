@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ArrowLeftRight, Download, Plus, Search, X } from 'lucide-react';
+import { ArrowLeftRight, Download, Plus, Search, Upload, X } from 'lucide-react';
+import { ImportDialog } from '@/components/transactions/import-dialog';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { useTransactionDialog } from '@/components/transactions/transaction-dialog';
 import { TransactionList } from '@/components/transactions/transaction-list';
@@ -19,13 +20,14 @@ import { downloadCSV } from '@/lib/csv';
 const PAGE = 60;
 
 export default function TransactionsPage() {
-  const { transactions, categories, currency, activeWallet, isDataLoading } = useWallet();
+  const { transactions, bookTransactions, categories, currency, activeWallet, isDataLoading, accounts, defaultAccountId, canEdit } = useWallet();
   const { openTransaction } = useTransactionDialog();
   const [search, setSearch] = useState('');
   const [type, setType] = useState<'all' | 'income' | 'expense'>('all');
   const [month, setMonth] = useState<string>(format(new Date(), 'yyyy-MM'));
   const [categoryId, setCategoryId] = useState<string>('all');
   const [limit, setLimit] = useState(PAGE);
+  const [importOpen, setImportOpen] = useState(false);
 
   // Acceso directo desde la app instalada: /transactions?nuevo=1
   useEffect(() => {
@@ -62,24 +64,30 @@ export default function TransactionsPage() {
   const totals = useMemo(() => {
     let income = 0;
     let expense = 0;
-    for (const t of filtered) t.type === 'income' ? (income += t.amount) : (expense += t.amount);
+    const inBook = new Set(bookTransactions.map((t) => t.id));
+    for (const t of filtered) {
+      if (!inBook.has(t.id)) continue; // transferencias y cuentas en otra moneda no suman
+      if (t.type === 'income') income += t.amount;
+      else expense += t.amount;
+    }
     return { income, expense, net: income - expense };
-  }, [filtered]);
+  }, [filtered, bookTransactions]);
 
   const hasFilters = !!search || type !== 'all' || categoryId !== 'all';
 
   const exportCSV = () => {
     const rows = filtered.map((t) => [
       t.date,
-      t.type === 'income' ? 'Ingreso' : 'Gasto',
+      t.type === 'income' ? 'Ingreso' : t.type === 'expense' ? 'Gasto' : 'Transferencia',
       t.description,
       categories.find((c) => c.id === t.categoryId)?.name ?? '',
+      accounts.find((a) => a.id === (t.accountId || defaultAccountId))?.name ?? '',
       t.paymentMethod ?? '',
       t.type === 'income' ? t.amount : -t.amount,
       t.notes ?? '',
     ]);
     const suffix = month === 'all' ? 'todos' : month;
-    downloadCSV(`movimientos-${(activeWallet?.name ?? 'libro').toLowerCase().replace(/\s+/g, '-')}-${suffix}.csv`, ['Fecha', 'Tipo', 'Descripción', 'Categoría', 'Medio de pago', `Monto (${currency})`, 'Nota'], rows);
+    downloadCSV(`movimientos-${(activeWallet?.name ?? 'libro').toLowerCase().replace(/\s+/g, '-')}-${suffix}.csv`, ['Fecha', 'Tipo', 'Descripción', 'Categoría', 'Cuenta', 'Medio de pago', `Monto (${currency})`, 'Nota'], rows);
   };
 
   return (
@@ -90,10 +98,15 @@ export default function TransactionsPage() {
         description="Todo lo que entra y sale, en orden."
         actions={
           <>
+            {canEdit && (
+              <Button variant="outline" onClick={() => setImportOpen(true)}>
+                <Upload /> Importar
+              </Button>
+            )}
             <Button variant="outline" onClick={exportCSV} disabled={!filtered.length}>
               <Download /> Exportar
             </Button>
-            <Button onClick={() => openTransaction()} className="hidden lg:inline-flex">
+            <Button onClick={() => openTransaction()} className={canEdit ? 'hidden lg:inline-flex' : 'hidden'}>
               <Plus /> Nuevo movimiento
             </Button>
           </>
@@ -211,6 +224,7 @@ export default function TransactionsPage() {
           }
         />
       )}
+      <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }

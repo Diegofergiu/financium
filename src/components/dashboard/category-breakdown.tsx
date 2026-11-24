@@ -11,7 +11,7 @@ import { monthSpentByCategory } from '@/lib/alerts';
 
 /** Ranking de gastos del mes por categoría (barras horizontales con nombre y monto). */
 export function CategoryBreakdown() {
-  const { transactions, categories, currency } = useWallet();
+  const { bookTransactions: transactions, categories, currency } = useWallet();
 
   const rows = useMemo(() => {
     const spent = monthSpentByCategory(transactions);

@@ -4,13 +4,18 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 
 export type ThemePref = 'light' | 'dark' | 'system';
 const KEY = 'mibolsillo:theme';
+const SIZE_KEY = 'mibolsillo:text-size';
+export type TextSize = 'normal' | 'large' | 'xl';
+const SIZES: Record<TextSize, string> = { normal: '100%', large: '112.5%', xl: '125%' };
 
 /** Script que se ejecuta antes de pintar para evitar el "parpadeo" de tema. */
-export const themeInitScript = `(function(){try{var t=localStorage.getItem('${KEY}')||'system';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();`;
+export const themeInitScript = `(function(){try{var t=localStorage.getItem('${KEY}')||'system';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.style.colorScheme=d?'dark':'light';var s=localStorage.getItem('${SIZE_KEY}');var m={large:'112.5%',xl:'125%'};if(m[s])document.documentElement.style.fontSize=m[s];}catch(e){}})();`;
 
-const ThemeContext = createContext<{ theme: ThemePref; setTheme: (t: ThemePref) => void }>({
+const ThemeContext = createContext<{ theme: ThemePref; setTheme: (t: ThemePref) => void; textSize: TextSize; setTextSize: (s: TextSize) => void }>({
   theme: 'system',
   setTheme: () => {},
+  textSize: 'normal',
+  setTextSize: () => {},
 });
 
 function apply(theme: ThemePref) {
@@ -23,6 +28,22 @@ function apply(theme: ThemePref) {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<ThemePref>('system');
+  const [textSize, setTextSizeState] = useState<TextSize>('normal');
+
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem(SIZE_KEY) as TextSize;
+      if (s && SIZES[s]) setTextSizeState(s);
+    } catch {}
+  }, []);
+
+  const setTextSize = useCallback((s: TextSize) => {
+    setTextSizeState(s);
+    document.documentElement.style.fontSize = SIZES[s];
+    try {
+      localStorage.setItem(SIZE_KEY, s);
+    } catch {}
+  }, []);
 
   useEffect(() => {
     try {
@@ -46,7 +67,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
-  return <ThemeContext.Provider value={{ theme, setTheme }}>{children}</ThemeContext.Provider>;
+  return <ThemeContext.Provider value={{ theme, setTheme, textSize, setTextSize }}>{children}</ThemeContext.Provider>;
 }
 
 export const useTheme = () => useContext(ThemeContext);

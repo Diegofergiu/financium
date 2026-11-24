@@ -23,7 +23,8 @@ function getFormatter(currency: string, compact: boolean) {
     f = new Intl.NumberFormat('es-AR', {
       style: 'currency',
       currency,
-      currencyDisplay: 'narrowSymbol',
+      // "$" sólo para pesos argentinos; el resto con su símbolo propio (US$, €, UYU…)
+      currencyDisplay: currency === 'ARS' ? 'narrowSymbol' : 'symbol',
       minimumFractionDigits: compact ? 0 : 2,
       maximumFractionDigits: compact ? 1 : 2,
       notation: compact ? 'compact' : 'standard',

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Bell, BellRing, AlertTriangle, Ticket, Target, CheckCheck } from 'lucide-react';
+import { Bell, BellRing, AlertTriangle, Ticket, Target, CheckCheck, Repeat } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { useNotifications } from '@/components/providers/notifications-provider';
@@ -48,7 +48,7 @@ export function NotificationBell() {
           ) : (
             <ul className="divide-y">
               {alerts.map((a) => {
-                const Icon = a.kind === 'check' ? Ticket : Target;
+                const Icon = a.kind === 'check' ? Ticket : a.kind === 'recurring' ? Repeat : Target;
                 return (
                   <li key={a.id}>
                     <Link href={a.href} onClick={() => setOpen(false)} className="flex gap-3 px-4 py-3 transition-colors hover:bg-muted/60">

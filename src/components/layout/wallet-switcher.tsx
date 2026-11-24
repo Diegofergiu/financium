@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useWallet } from '@/components/providers/wallet-provider';
+import { useUser } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { CURRENCIES, DEFAULT_CURRENCY } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -78,6 +79,9 @@ export function NewWalletDialog({ open, onOpenChange }: { open: boolean; onOpenC
 
 export function WalletSwitcher({ className, compact }: { className?: string; compact?: boolean }) {
   const { wallets, activeWallet, setActiveWalletId } = useWallet();
+  const { user } = useUser();
+  const ownerLabel = (w: (typeof wallets)[number]) =>
+    user && w.ownerId !== user.uid ? `de ${(w.memberInfo?.[w.ownerId]?.name || w.memberInfo?.[w.ownerId]?.email || 'otra persona').split(' ')[0]}` : null;
   const [newOpen, setNewOpen] = useState(false);
 
   return (
@@ -97,7 +101,7 @@ export function WalletSwitcher({ className, compact }: { className?: string; com
               </span>
             )}
             <span className="min-w-0 flex-1">
-              {!compact && <span className="block text-[11px] font-medium text-muted-foreground">Libro actual</span>}
+              {!compact && <span className="block text-[11px] font-medium text-muted-foreground">{activeWallet && ownerLabel(activeWallet) ? `Compartido ${ownerLabel(activeWallet)}` : 'Libro actual'}</span>}
               <span className="block truncate text-sm font-semibold">{activeWallet?.name ?? 'Cargando…'}</span>
             </span>
             <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -108,7 +112,10 @@ export function WalletSwitcher({ className, compact }: { className?: string; com
           {wallets.map((w) => (
             <DropdownMenuItem key={w.id} onClick={() => setActiveWalletId(w.id)} className="gap-2 py-2">
               <BookOpen className="h-4 w-4 text-muted-foreground" />
-              <span className="flex-1 truncate">{w.name}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{w.name}</span>
+                {ownerLabel(w) && <span className="block truncate text-[11px] text-muted-foreground">Compartido {ownerLabel(w)}</span>}
+              </span>
               <span className="text-[10px] text-muted-foreground">{w.currency ?? DEFAULT_CURRENCY}</span>
               {activeWallet?.id === w.id && <Check className="h-4 w-4 text-primary" />}
             </DropdownMenuItem>

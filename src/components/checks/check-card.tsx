@@ -1,10 +1,9 @@
 'use client';
 
-import { useState } from 'react';
 import { MoreVertical, CheckCircle2, XCircle, Ban, RotateCcw, Pencil, Trash2, Landmark, CalendarClock } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { ConfirmDialog } from '@/components/shared/ui-bits';
+import { AttachmentBadge } from '@/components/shared/attachment-picker';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { useCheckActions } from './check-dialog';
 import { daysUntil, formatDate, formatMoney, relativeDays } from '@/lib/format';
@@ -19,9 +18,8 @@ const STATUS: Record<Check['status'], { label: string; className: string }> = {
 };
 
 export function CheckCard({ check, onEdit, compact }: { check: Check; onEdit?: (c: Check) => void; compact?: boolean }) {
-  const { currency } = useWallet();
+  const { currency, canEdit } = useWallet();
   const { setStatus, remove } = useCheckActions();
-  const [confirm, setConfirm] = useState(false);
   const days = daysUntil(check.dueDate);
   const pending = check.status === 'pending';
   const overdue = pending && days < 0;
@@ -45,7 +43,10 @@ export function CheckCard({ check, onEdit, compact }: { check: Check; onEdit?: (
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate text-[15px] font-semibold">{check.issuerRecipient || 'Sin nombre'}</p>
+            <p className="flex items-center gap-1.5 text-[15px] font-semibold">
+              <span className="truncate">{check.issuerRecipient || 'Sin nombre'}</span>
+              <AttachmentBadge count={check.attachments?.length} />
+            </p>
             <p className="text-xs text-muted-foreground">{toCollect ? 'A cobrar' : 'A pagar'}{check.checkNumber ? ` · N° ${check.checkNumber}` : ''}</p>
           </div>
           <span className={cn('tabular shrink-0 text-[15px] font-bold', toCollect ? 'text-income' : 'text-foreground')}>
@@ -68,13 +69,13 @@ export function CheckCard({ check, onEdit, compact }: { check: Check; onEdit?: (
             </span>
           )}
         </div>
-        {!compact && pending && (
+        {!compact && pending && canEdit && (
           <Button size="sm" variant="secondary" className="mt-3 h-9" onClick={() => setStatus(check, 'cleared')}>
             <CheckCircle2 /> {toCollect ? 'Marcar como cobrado' : 'Marcar como pagado'}
           </Button>
         )}
       </div>
-      {!compact && (
+      {!compact && canEdit && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="-mr-1 -mt-1 h-9 w-9 shrink-0 rounded-full" aria-label="Opciones del cheque">
@@ -102,22 +103,15 @@ export function CheckCard({ check, onEdit, compact }: { check: Check; onEdit?: (
             <DropdownMenuSeparator />
             {onEdit && (
               <DropdownMenuItem className="gap-2" onClick={() => onEdit(check)}>
-                <Pencil className="h-4 w-4" /> Editar
+                <Pencil className="h-4 w-4" /> Editar / ver fotos
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive" onClick={() => setConfirm(true)}>
+            <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive" onClick={() => remove(check)}>
               <Trash2 className="h-4 w-4" /> Eliminar
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       )}
-      <ConfirmDialog
-        open={confirm}
-        onOpenChange={setConfirm}
-        title="¿Eliminar este cheque?"
-        description={check.transactionId ? 'También se eliminará el movimiento que se generó al cobrarlo/pagarlo.' : 'Esta acción no se puede deshacer.'}
-        onConfirm={() => remove(check)}
-      />
     </div>
   );
 }

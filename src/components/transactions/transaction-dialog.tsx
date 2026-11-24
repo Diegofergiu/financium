@@ -1,8 +1,8 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { useFirestore } from '@/firebase';
+import { collection, doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { useFirestore, useUser } from '@/firebase';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -10,12 +10,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CategoryDot, ConfirmDialog, Segmented } from '@/components/shared/ui-bits';
-import { Camera, Loader2, Sparkles, Trash2 } from 'lucide-react';
+import { CategoryDot, Segmented } from '@/components/shared/ui-bits';
+import { AttachmentPicker, useAttachmentDraft } from '@/components/shared/attachment-picker';
+import { deleteWithUndo } from '@/components/shared/undo';
+import { ArrowRight, Camera, Loader2, Sparkles, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { PAYMENT_METHODS } from '@/lib/defaults';
 import { parseAmount, todayISO, formatMoney } from '@/lib/format';
 import { guessCategory } from '@/lib/auto-category';
+import { blobToDataUri, compressImage, deleteAttachments, uploadAttachment } from '@/lib/attachments';
+import { OFFLINE_NOTE, safeWrite } from '@/lib/write';
 import { suggestTransactionCategory } from '@/ai/flows/suggest-transaction-category';
 import { extractReceiptData } from '@/ai/flows/extract-receipt-data';
 import type { Transaction, TransactionType } from '@/types';
@@ -39,61 +43,73 @@ export function TransactionDialogProvider({ children }: { children: ReactNode })
   );
 }
 
-/** Reduce una foto a máx. 1280px y la devuelve como data URI JPEG (para enviarla a la IA). */
-async function fileToDataUri(file: File): Promise<string> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, 1280 / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL('image/jpeg', 0.8);
-}
+const amountClean = (v: string) => v.replace(/[^\d.,]/g, '');
 
 function TransactionDialog({ open, onOpenChange, type: initialType, transaction }: OpenOptions & { open: boolean; onOpenChange: (o: boolean) => void }) {
   const db = useFirestore();
+  const { user } = useUser();
   const { toast } = useToast();
-  const { activeWallet, categories, authFields, currency } = useWallet();
+  const { activeWallet, categories, authFields, currency, accounts, defaultAccountId, canEdit } = useWallet();
   const isEdit = !!transaction;
+  const readOnly = !canEdit;
+  const draft = useAttachmentDraft();
 
   const [type, setType] = useState<TransactionType>('expense');
   const [amount, setAmount] = useState('');
+  const [toAmount, setToAmount] = useState('');
   const [description, setDescription] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [accountId, setAccountId] = useState('');
+  const [toAccountId, setToAccountId] = useState('');
   const [date, setDate] = useState(todayISO());
   const [paymentMethod, setPaymentMethod] = useState('Efectivo');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [touchedCategory, setTouchedCategory] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const scanRef = useRef<HTMLInputElement>(null);
+  const saved = useRef(false);
 
-  // Reiniciar el formulario cada vez que se abre
+  const activeAccounts = accounts.filter((a) => !a.archived || a.id === transaction?.accountId || a.id === transaction?.toAccountId);
+  const fromAcc = accounts.find((a) => a.id === (accountId || defaultAccountId));
+  const toAcc = accounts.find((a) => a.id === toAccountId);
+  const crossCurrency = type === 'transfer' && !!fromAcc && !!toAcc && fromAcc.currency !== toAcc.currency;
+  const amountCurrency = fromAcc?.currency || currency;
+
   useEffect(() => {
     if (!open) return;
+    saved.current = false;
     setType(transaction?.type ?? initialType ?? 'expense');
     setAmount(transaction ? String(transaction.amount).replace('.', ',') : '');
+    setToAmount(transaction?.toAmount ? String(transaction.toAmount).replace('.', ',') : '');
     setDescription(transaction?.description ?? '');
     setCategoryId(transaction?.categoryId ?? '');
+    setAccountId(transaction?.accountId || defaultAccountId || '');
+    setToAccountId(transaction?.toAccountId ?? '');
     setDate(transaction?.date ?? todayISO());
     setPaymentMethod(transaction?.paymentMethod ?? 'Efectivo');
     setNotes(transaction?.notes ?? '');
     setTouchedCategory(!!transaction);
+    draft.reset(transaction?.attachments ?? []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, transaction, initialType]);
+
+  const handleOpenChange = (o: boolean) => {
+    if (!o && !saved.current) draft.discard();
+    onOpenChange(o);
+  };
 
   const visibleCategories = useMemo(
     () => categories.filter((c) => !c.kind || c.kind === 'both' || c.kind === type || c.id === categoryId),
     [categories, type, categoryId]
   );
 
-  // Sugerencia automática instantánea (sin IA) mientras se escribe
   useEffect(() => {
-    if (touchedCategory || !description) return;
+    if (touchedCategory || !description || type === 'transfer') return;
     const guess = guessCategory(description, visibleCategories);
     if (guess) setCategoryId(guess.id);
-  }, [description, visibleCategories, touchedCategory]);
+  }, [description, visibleCategories, touchedCategory, type]);
 
   const parsedAmount = parseAmount(amount);
 
@@ -104,22 +120,16 @@ function TransactionDialog({ open, onOpenChange, type: initialType, transaction 
     }
     setSuggesting(true);
     try {
-      const local = guessCategory(description, visibleCategories);
-      let found = local;
+      let found = guessCategory(description, visibleCategories);
       if (!found && visibleCategories.length) {
-        const result = await suggestTransactionCategory({
-          transactionDescription: description,
-          availableCategories: visibleCategories.map((c) => c.name),
-        });
+        const result = await suggestTransactionCategory({ transactionDescription: description, availableCategories: visibleCategories.map((c) => c.name) });
         found = visibleCategories.find((c) => c.name.toLowerCase() === result?.suggestedCategory?.toLowerCase()) ?? null;
       }
       if (found) {
         setCategoryId(found.id);
         setTouchedCategory(true);
         toast({ title: `Categoría sugerida: ${found.name}` });
-      } else {
-        toast({ title: 'No encontramos una categoría clara', description: 'Elegila de la lista.' });
-      }
+      } else toast({ title: 'No encontramos una categoría clara', description: 'Elegila de la lista.' });
     } catch {
       toast({ title: 'La sugerencia con IA no está disponible', description: 'Elegí la categoría de la lista.' });
     } finally {
@@ -127,60 +137,80 @@ function TransactionDialog({ open, onOpenChange, type: initialType, transaction 
     }
   };
 
+  /** Lee el ticket con IA y además lo deja adjunto. */
   const onScan = async (file?: File) => {
-    if (!file) return;
+    if (!file || !activeWallet || !user) return;
     setScanning(true);
     try {
-      const dataUri = await fileToDataUri(file);
-      const r = await extractReceiptData({ imageDataUri: dataUri });
+      if (navigator.onLine) draft.add(await uploadAttachment(activeWallet.id, user.uid, file));
+    } catch {
+      /* el adjunto es opcional */
+    }
+    try {
+      const small = await compressImage(file, 1280, 0.8);
+      const r = await extractReceiptData({ imageDataUri: await blobToDataUri(small) });
       if (r.amount) setAmount(String(r.amount).replace('.', ','));
       if (r.date && /^\d{4}-\d{2}-\d{2}$/.test(r.date)) setDate(r.date);
       const desc = [r.vendorOrPayer, r.description].filter(Boolean).join(' – ');
       if (desc) setDescription(desc);
-      toast({ title: 'Comprobante leído', description: 'Revisá los datos antes de guardar.' });
+      toast({ title: 'Comprobante leído y adjuntado', description: 'Revisá los datos antes de guardar.' });
     } catch {
-      toast({ variant: 'destructive', title: 'No se pudo leer el comprobante', description: 'La lectura con IA requiere configurar GEMINI_API_KEY. Podés cargar los datos a mano.' });
+      toast({ title: 'Foto adjuntada', description: 'No se pudieron leer los datos automáticamente (requiere GEMINI_API_KEY). Completalos a mano.' });
     } finally {
       setScanning(false);
-      if (fileRef.current) fileRef.current.value = '';
+      if (scanRef.current) scanRef.current.value = '';
     }
   };
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeWallet || !authFields) return;
+    if (!activeWallet || !authFields || readOnly) return;
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       toast({ variant: 'destructive', title: 'Revisá el monto', description: 'Tiene que ser un número mayor a cero.' });
       return;
     }
-    if (!description.trim()) {
+    if (type === 'transfer') {
+      if (!toAccountId || toAccountId === (accountId || defaultAccountId)) {
+        toast({ variant: 'destructive', title: 'Elegí la cuenta de destino', description: 'Tiene que ser distinta a la de origen.' });
+        return;
+      }
+    } else if (!description.trim()) {
       toast({ variant: 'destructive', title: 'Falta la descripción' });
       return;
     }
-    setSaving(true);
-    const data = {
+    const round = (n: number) => Math.round(n * 100) / 100;
+    const parsedTo = parseAmount(toAmount);
+    const data: Record<string, any> = {
       type,
-      amount: Math.round(parsedAmount * 100) / 100,
-      description: description.trim(),
-      categoryId,
+      amount: round(parsedAmount),
+      description: description.trim() || (type === 'transfer' ? `${fromAcc?.name ?? 'Cuenta'} → ${toAcc?.name ?? 'Cuenta'}` : ''),
+      categoryId: type === 'transfer' ? '' : categoryId,
+      accountId: accountId || defaultAccountId || '',
+      toAccountId: type === 'transfer' ? toAccountId : '',
+      toAmount: crossCurrency && Number.isFinite(parsedTo) && parsedTo > 0 ? round(parsedTo) : null,
       date,
-      paymentMethod,
+      paymentMethod: type === 'transfer' ? '' : paymentMethod,
       notes: notes.trim(),
+      attachments: draft.items,
     };
+    if (crossCurrency && !data.toAmount) {
+      toast({ variant: 'destructive', title: `Indicá cuánto entró en ${toAcc?.currency}` });
+      return;
+    }
+    setSaving(true);
     try {
-      if (isEdit) {
-        await updateDoc(doc(db, 'wallets', activeWallet.id, 'transactions', transaction!.id), { ...data, updatedAt: serverTimestamp() });
-        toast({ title: 'Movimiento actualizado' });
-      } else {
-        await addDoc(collection(db, 'wallets', activeWallet.id, 'transactions'), {
-          ...data,
-          walletId: activeWallet.id,
-          ...authFields,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        toast({ title: type === 'income' ? 'Ingreso anotado' : 'Gasto anotado', description: `${formatMoney(data.amount, currency)} · ${data.description}` });
-      }
+      const ref = isEdit ? doc(db, 'wallets', activeWallet.id, 'transactions', transaction!.id) : doc(collection(db, 'wallets', activeWallet.id, 'transactions'));
+      const p = isEdit
+        ? updateDoc(ref, { ...data, updatedAt: serverTimestamp() })
+        : setDoc(ref, { ...data, walletId: activeWallet.id, ...authFields, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      const result = await safeWrite(p);
+      saved.current = true;
+      draft.commit();
+      const label = type === 'income' ? 'Ingreso anotado' : type === 'expense' ? 'Gasto anotado' : 'Transferencia anotada';
+      toast({
+        title: isEdit ? 'Movimiento actualizado' : label,
+        description: result === 'queued' ? OFFLINE_NOTE : `${formatMoney(data.amount, amountCurrency)} · ${data.description}`,
+      });
       onOpenChange(false);
     } catch (err) {
       console.error(err);
@@ -192,39 +222,38 @@ function TransactionDialog({ open, onOpenChange, type: initialType, transaction 
 
   const onDelete = async () => {
     if (!activeWallet || !transaction) return;
-    try {
-      await deleteDoc(doc(db, 'wallets', activeWallet.id, 'transactions', transaction.id));
-      toast({ title: 'Movimiento eliminado' });
-      setConfirmDelete(false);
-      onOpenChange(false);
-    } catch {
-      toast({ variant: 'destructive', title: 'No se pudo eliminar' });
-    }
+    saved.current = true;
+    draft.discard();
+    onOpenChange(false);
+    const ref = doc(db, 'wallets', activeWallet.id, 'transactions', transaction.id);
+    await deleteWithUndo(db, [{ ref, data: transaction }], 'Movimiento eliminado', () => deleteAttachments(transaction.attachments ?? []));
   };
 
   return (
-    <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{isEdit ? 'Editar movimiento' : 'Nuevo movimiento'}</DialogTitle>
-            <DialogDescription>
-              En <strong>{activeWallet?.name}</strong>
-            </DialogDescription>
-          </DialogHeader>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{readOnly ? 'Detalle del movimiento' : isEdit ? 'Editar movimiento' : 'Nuevo movimiento'}</DialogTitle>
+          <DialogDescription>
+            En <strong>{activeWallet?.name}</strong>
+            {readOnly && ' · sólo lectura'}
+          </DialogDescription>
+        </DialogHeader>
 
-          <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={onSubmit} className="space-y-4">
+          <fieldset disabled={readOnly} className="space-y-4">
             <Segmented
               value={type}
               onChange={(v) => setType(v)}
               options={[
                 { value: 'expense', label: 'Gasto', activeClass: 'text-expense' },
                 { value: 'income', label: 'Ingreso', activeClass: 'text-income' },
+                ...(accounts.length > 1 || type === 'transfer' ? [{ value: 'transfer' as const, label: 'Transferir' }] : []),
               ]}
             />
 
             <div className="space-y-2">
-              <Label htmlFor="tx-amount">Monto</Label>
+              <Label htmlFor="tx-amount">{crossCurrency ? `Monto que sale (${amountCurrency})` : 'Monto'}</Label>
               <div className="relative">
                 <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-xl font-semibold text-muted-foreground">$</span>
                 <Input
@@ -234,79 +263,149 @@ function TransactionDialog({ open, onOpenChange, type: initialType, transaction 
                   placeholder="0,00"
                   className="tabular h-14 pl-9 text-2xl font-bold md:text-2xl"
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value.replace(/[^\d.,]/g, ''))}
+                  onChange={(e) => setAmount(amountClean(e.target.value))}
                   autoFocus={!isEdit}
                   required
                 />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="tx-desc">Descripción</Label>
-                {!isEdit && (
-                  <button type="button" onClick={() => fileRef.current?.click()} disabled={scanning} className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline disabled:opacity-50">
-                    {scanning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
-                    Leer ticket con foto
-                  </button>
+            {type === 'transfer' ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
+                  <div className="space-y-2">
+                    <Label>Desde</Label>
+                    <Select value={accountId || defaultAccountId || undefined} onValueChange={setAccountId}>
+                      <SelectTrigger className="h-11">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {activeAccounts.map((a) => (
+                          <SelectItem key={a.id} value={a.id}>
+                            {a.name}
+                            {a.currency !== currency ? ` (${a.currency})` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <ArrowRight className="mb-3 h-5 w-5 text-muted-foreground" />
+                  <div className="space-y-2">
+                    <Label>Hacia</Label>
+                    <Select value={toAccountId || undefined} onValueChange={setToAccountId}>
+                      <SelectTrigger className="h-11">
+                        <SelectValue placeholder="Elegir" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {activeAccounts
+                          .filter((a) => a.id !== (accountId || defaultAccountId))
+                          .map((a) => (
+                            <SelectItem key={a.id} value={a.id}>
+                              {a.name}
+                              {a.currency !== currency ? ` (${a.currency})` : ''}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                {crossCurrency && (
+                  <div className="space-y-2">
+                    <Label htmlFor="tx-to-amount">Monto que entra ({toAcc?.currency})</Label>
+                    <Input id="tx-to-amount" inputMode="decimal" className="tabular h-11" placeholder="0,00" value={toAmount} onChange={(e) => setToAmount(amountClean(e.target.value))} />
+                    {Number.isFinite(parsedAmount) && parseAmount(toAmount) > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Cotización: 1 {toAcc?.currency} = {formatMoney(parsedAmount / parseAmount(toAmount), fromAcc?.currency)}
+                      </p>
+                    )}
+                  </div>
                 )}
-                <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => onScan(e.target.files?.[0])} />
+                <div className="space-y-2">
+                  <Label htmlFor="tx-desc">
+                    Detalle <span className="font-normal text-muted-foreground">(opcional)</span>
+                  </Label>
+                  <Input id="tx-desc" placeholder="Ej.: Extracción del cajero" className="h-11" value={description} onChange={(e) => setDescription(e.target.value)} />
+                </div>
               </div>
-              <Input id="tx-desc" placeholder={type === 'income' ? 'Ej.: Sueldo de marzo' : 'Ej.: Supermercado Coto'} className="h-11" value={description} onChange={(e) => setDescription(e.target.value)} required />
-            </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="tx-desc">Descripción</Label>
+                    {!isEdit && !readOnly && (
+                      <button type="button" onClick={() => scanRef.current?.click()} disabled={scanning} className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline disabled:opacity-50">
+                        {scanning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                        Leer ticket con foto
+                      </button>
+                    )}
+                    <input ref={scanRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => onScan(e.target.files?.[0])} />
+                  </div>
+                  <Input id="tx-desc" placeholder={type === 'income' ? 'Ej.: Sueldo de marzo' : 'Ej.: Supermercado Coto'} className="h-11" value={description} onChange={(e) => setDescription(e.target.value)} required />
+                </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Categoría</Label>
-                <button type="button" onClick={onSuggest} disabled={suggesting} className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline disabled:opacity-50">
-                  {suggesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                  Sugerir
-                </button>
-              </div>
-              <Select
-                value={categoryId || undefined}
-                onValueChange={(v) => {
-                  setCategoryId(v);
-                  setTouchedCategory(true);
-                }}
-              >
-                <SelectTrigger className="h-11">
-                  <SelectValue placeholder="Elegí una categoría" />
-                </SelectTrigger>
-                <SelectContent>
-                  {visibleCategories.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      <span className="flex items-center gap-2">
-                        <CategoryDot color={c.colorHex} />
-                        {c.name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Categoría</Label>
+                    {!readOnly && (
+                      <button type="button" onClick={onSuggest} disabled={suggesting} className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline disabled:opacity-50">
+                        {suggesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                        Sugerir
+                      </button>
+                    )}
+                  </div>
+                  <Select
+                    value={categoryId || undefined}
+                    onValueChange={(v) => {
+                      setCategoryId(v);
+                      setTouchedCategory(true);
+                    }}
+                  >
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="Elegí una categoría" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {visibleCategories.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          <span className="flex items-center gap-2">
+                            <CategoryDot color={c.colorHex} />
+                            {c.name}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="tx-date">Fecha</Label>
                 <Input id="tx-date" type="date" className="h-11" value={date} onChange={(e) => setDate(e.target.value)} required />
               </div>
-              <div className="space-y-2">
-                <Label>Medio de pago</Label>
-                <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                  <SelectTrigger className="h-11">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from(new Set([...PAYMENT_METHODS, paymentMethod].filter(Boolean))).map((m) => (
-                      <SelectItem key={m} value={m}>
-                        {m}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {type !== 'transfer' &&
+                (accounts.length > 1 ? (
+                  <div className="space-y-2">
+                    <Label>Cuenta</Label>
+                    <Select value={accountId || defaultAccountId || undefined} onValueChange={setAccountId}>
+                      <SelectTrigger className="h-11">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {activeAccounts.map((a) => (
+                          <SelectItem key={a.id} value={a.id}>
+                            {a.name}
+                            {a.currency !== currency ? ` (${a.currency})` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <PaymentSelect value={paymentMethod} onChange={setPaymentMethod} />
+                ))}
             </div>
+            {type !== 'transfer' && accounts.length > 1 && <PaymentSelect value={paymentMethod} onChange={setPaymentMethod} />}
 
             <div className="space-y-2">
               <Label htmlFor="tx-notes">
@@ -314,28 +413,47 @@ function TransactionDialog({ open, onOpenChange, type: initialType, transaction 
               </Label>
               <Textarea id="tx-notes" rows={2} placeholder="Algo para recordar…" value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
+          </fieldset>
 
+          {activeWallet && (readOnly ? draft.items.length > 0 : true) && (
+            <AttachmentPicker walletId={activeWallet.id} draft={draft} disabled={readOnly} label={type === 'transfer' ? 'Comprobante' : 'Foto de la factura o boleta'} />
+          )}
+
+          {!readOnly && (
             <DialogFooter className="gap-2 pt-2">
               {isEdit && (
-                <Button type="button" variant="ghost" className="text-destructive hover:bg-destructive/10 hover:text-destructive sm:mr-auto" onClick={() => setConfirmDelete(true)}>
+                <Button type="button" variant="ghost" className="text-destructive hover:bg-destructive/10 hover:text-destructive sm:mr-auto" onClick={onDelete}>
                   <Trash2 /> Eliminar
                 </Button>
               )}
               <Button type="submit" size="lg" className="h-12 w-full sm:w-auto" disabled={saving}>
                 {saving && <Loader2 className="animate-spin" />}
-                {isEdit ? 'Guardar cambios' : type === 'income' ? 'Anotar ingreso' : 'Anotar gasto'}
+                {isEdit ? 'Guardar cambios' : type === 'income' ? 'Anotar ingreso' : type === 'expense' ? 'Anotar gasto' : 'Anotar transferencia'}
               </Button>
             </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-      <ConfirmDialog
-        open={confirmDelete}
-        onOpenChange={setConfirmDelete}
-        title="¿Eliminar este movimiento?"
-        description="Esta acción no se puede deshacer."
-        onConfirm={onDelete}
-      />
-    </>
+          )}
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PaymentSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="space-y-2">
+      <Label>Medio de pago</Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="h-11">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {Array.from(new Set([...PAYMENT_METHODS, value].filter(Boolean))).map((m) => (
+            <SelectItem key={m} value={m}>
+              {m}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }

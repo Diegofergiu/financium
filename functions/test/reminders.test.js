@@ -113,3 +113,40 @@ test('usuarios sin pushEnabled no reciben nada', async () => {
   await runDailyReminders({ db, messaging, FieldValue, FieldPath, log: { error() {} } });
   assert.strictEqual(messaging.sent.filter((m) => m.token === 'tok:off').length, 0);
 });
+
+test('processRecurring anota los gastos fijos automáticos una sola vez', async () => {
+  const { processRecurring, runWeeklySummary } = require('../reminders');
+  const uid = `r${Date.now()}`;
+  const today = localISO();
+  const month = today.slice(0, 7);
+  const wallet = db.collection('wallets').doc();
+  await wallet.set({ name: 'Casa', ownerId: uid, members: { [uid]: 'owner' }, currency: 'ARS' });
+  await wallet.collection('recurring').doc('alq').set({ type: 'expense', amount: 300000, description: 'Alquiler', categoryId: 'c', dayOfMonth: 1, autoCreate: true, active: true, lastCreatedMonth: null });
+  await wallet.collection('recurring').doc('manual').set({ type: 'expense', amount: 1, description: 'Luz', dayOfMonth: 1, autoCreate: false, active: true });
+  await wallet.collection('recurring').doc('futuro').set({ type: 'expense', amount: 1, description: 'X', dayOfMonth: 31, autoCreate: true, active: true });
+
+  const c1 = await processRecurring({ db, FieldValue, today });
+  const mine = c1.filter((c) => c.walletId === wallet.id).map((c) => c.recurring.id);
+  assert.ok(mine.includes('alq'));
+  assert.ok(!mine.includes('manual'), 'los manuales no se anotan solos');
+  const tx = await wallet.collection('transactions').doc(`rec-alq-${month}`).get();
+  assert.ok(tx.exists);
+  assert.strictEqual(tx.data().amount, 300000);
+  assert.strictEqual(tx.data().walletOwnerId, uid);
+  assert.strictEqual((await wallet.collection('recurring').doc('alq').get()).data().lastCreatedMonth, month);
+
+  const c2 = await processRecurring({ db, FieldValue, today });
+  assert.strictEqual(c2.filter((c) => c.walletId === wallet.id && c.recurring.id === 'alq').length, 0, 'no se repite');
+
+  // Resumen semanal: movimiento de ayer y usuario con push
+  const y = addDays(today, -1);
+  await wallet.collection('transactions').add({ type: 'expense', amount: 5000, date: y, categoryId: 'c' });
+  await wallet.collection('transactions').add({ type: 'transfer', amount: 999999, date: y });
+  await db.collection('users').doc(uid).set({ id: uid, pushEnabled: true, fcmTokens: { 'tok:sem': {} } });
+  const messaging = fakeMessaging();
+  await runWeeklySummary({ db, messaging, FieldValue, FieldPath, log: { error() {} } });
+  const m = messaging.sent.find((x) => x.token === 'tok:sem');
+  assert.ok(m, 'envía resumen');
+  assert.match(m.data.body, /salieron/);
+  assert.ok(!m.data.body.includes('999.999'), 'las transferencias no suman');
+});

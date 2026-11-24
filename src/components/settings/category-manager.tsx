@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CategoryDot, ConfirmDialog, Segmented } from '@/components/shared/ui-bits';
 import { useToast } from '@/hooks/use-toast';
+import { safeWrite } from '@/lib/write';
 import { CATEGORY_COLORS } from '@/lib/defaults';
 import { cn } from '@/lib/utils';
 import type { Category, CategoryKind } from '@/types';
@@ -39,15 +40,15 @@ function CategoryDialog({ open, onOpenChange, category }: { open: boolean; onOpe
     setSaving(true);
     const data = { name: name.trim(), colorHex: color, kind };
     try {
-      if (category) await updateDoc(doc(db, 'wallets', activeWallet.id, 'categories', category.id), { ...data, updatedAt: serverTimestamp() });
+      if (category) await safeWrite(updateDoc(doc(db, 'wallets', activeWallet.id, 'categories', category.id), { ...data, updatedAt: serverTimestamp() }));
       else
-        await addDoc(collection(db, 'wallets', activeWallet.id, 'categories'), {
+        await safeWrite(addDoc(collection(db, 'wallets', activeWallet.id, 'categories'), {
           ...data,
           walletId: activeWallet.id,
           ...authFields,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
-        });
+        }));
       toast({ title: category ? 'Categoría actualizada' : 'Categoría creada' });
       onOpenChange(false);
     } catch {

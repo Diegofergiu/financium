@@ -40,8 +40,65 @@ service cloud.firestore {
       allow delete: if signedIn() && request.auth.uid == userId;
     }
 
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    /** Sólo cambian estas claves del documento. */
+    function onlyKeys(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    /** En un mapa (members/memberInfo) sólo cambia la entrada del propio usuario. */
+    function onlySelfIn(field) {
+      return request.resource.data.get(field, {}).diff(resource.data.get(field, {})).affectedKeys().hasOnly([request.auth.uid]);
+    }
+
+    function joiningByInvite(walletId) {
+      let inv = get(/databases/$(database)/documents/invites/$(walletId + '__' + myEmail()));
+      return request.auth.token.email_verified == true
+        && inv.data.status == 'pending'
+        && inv.data.walletId == walletId
+        && onlyKeys(['members', 'memberInfo', 'updatedAt'])
+        && onlySelfIn('members')
+        && onlySelfIn('memberInfo')
+        && request.resource.data.members[request.auth.uid] == inv.data.role;
+    }
+
+    function leavingWallet() {
+      return request.auth.uid in resource.data.members
+        && !(request.auth.uid in request.resource.data.members)
+        && resource.data.ownerId != request.auth.uid
+        && onlyKeys(['members', 'memberInfo', 'updatedAt'])
+        && onlySelfIn('members');
+    }
+
+    match /invites/{inviteId} {
+      allow create: if signedIn()
+        && get(walletPath(request.resource.data.walletId)).data.ownerId == request.auth.uid
+        && inviteId == request.resource.data.walletId + '__' + request.resource.data.email
+        && request.resource.data.email == request.resource.data.email.lower()
+        && request.resource.data.role in ['editor', 'reader']
+        && request.resource.data.status == 'pending'
+        && request.resource.data.invitedBy == request.auth.uid;
+      allow get, list: if signedIn() && (
+        resource.data.invitedBy == request.auth.uid ||
+        (request.auth.token.email_verified == true && resource.data.email == myEmail())
+      );
+      // La persona invitada acepta o rechaza
+      allow update: if signedIn()
+        && request.auth.token.email_verified == true
+        && resource.data.email == myEmail()
+        && resource.data.status == 'pending'
+        && request.resource.data.status in ['accepted', 'declined']
+        && onlyKeys(['status', 'acceptedBy', 'updatedAt']);
+      // Quien invitó puede cancelarla
+      allow delete: if signedIn() && resource.data.invitedBy == request.auth.uid;
+    }
+
     match /wallets/{walletId} {
-      allow get, list: if hasAccess(resource.data);
+      allow get: if hasAccess(resource.data);
+      allow list: if signedIn() && request.auth.uid in resource.data.members;
       allow create: if signedIn()
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.members is map
@@ -49,10 +106,18 @@ service cloud.firestore {
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() <= 80;
-      allow update: if canWriteWallet(resource.data)
+      allow update: if signedIn()
         && request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.name is string
-        && request.resource.data.name.size() > 0;
+        && request.resource.data.name.size() > 0
+        && (
+          // Dueño: puede todo, pero sigue figurando como dueño
+          (resource.data.ownerId == request.auth.uid && request.resource.data.members[request.auth.uid] == 'owner') ||
+          // Editor: nombre/moneda, sin tocar quién tiene acceso
+          (canWriteWallet(resource.data) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['members', 'memberInfo', 'ownerId'])) ||
+          leavingWallet() ||
+          joiningByInvite(walletId)
+        );
       allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
 
       match /{sub}/{docId} {

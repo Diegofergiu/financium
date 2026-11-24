@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { signOut } from 'firebase/auth';
-import { LayoutDashboard, ArrowLeftRight, Ticket, Target, Settings, LogOut, Plus, Moon, Sun, Monitor } from 'lucide-react';
+import { LayoutDashboard, ArrowLeftRight, Ticket, Target, Settings, LogOut, Plus, Moon, Sun, Monitor, WifiOff, Wallet, Repeat, BarChart3, Menu, Eye } from 'lucide-react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { useWallet } from '@/components/providers/wallet-provider';
 import { useAuth, useUser } from '@/firebase';
 import { Logo, LogoMark } from '@/components/brand/logo';
 import { WalletSwitcher } from './wallet-switcher';
@@ -20,8 +22,12 @@ const NAV = [
   { name: 'Movimientos', href: '/transactions', icon: ArrowLeftRight },
   { name: 'Cheques', href: '/checks', icon: Ticket },
   { name: 'Presupuestos', href: '/budgets', icon: Target },
+  { name: 'Cuentas', href: '/accounts', icon: Wallet },
+  { name: 'Gastos fijos', href: '/recurring', icon: Repeat },
+  { name: 'Resumen', href: '/reports', icon: BarChart3 },
   { name: 'Ajustes', href: '/settings', icon: Settings },
 ];
+const BOTTOM = ['/dashboard', '/transactions', '/checks'];
 
 function initials(name?: string | null, email?: string | null) {
   const src = (name || email || '?').trim();
@@ -84,7 +90,25 @@ function UserMenu() {
   );
 }
 
+function useOnline() {
+  const [online, setOnline] = useState(true);
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    update();
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
+  return online;
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
+  const online = useOnline();
+  const [moreOpen, setMoreOpen] = useState(false);
+  const { canEdit } = useWallet();
   const pathname = usePathname();
   const { openTransaction } = useTransactionDialog();
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/');
@@ -92,7 +116,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-[100dvh] bg-background">
       {/* Barra lateral (tablet/compu) */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r bg-sidebar lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 print:!hidden flex-col border-r bg-sidebar lg:flex">
         <div className="px-5 pb-4 pt-6">
           <Link href="/dashboard">
             <Logo />
@@ -101,7 +125,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="px-3">
           <WalletSwitcher />
         </div>
-        <nav className="mt-6 flex-1 space-y-1 px-3">
+        <nav className="mt-6 flex-1 space-y-1 overflow-y-auto px-3">
           {NAV.map((item) => (
             <Link
               key={item.href}
@@ -117,15 +141,21 @@ export function AppShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <div className="p-3">
-          <Button size="lg" className="h-12 w-full text-base" onClick={() => openTransaction()}>
-            <Plus className="!size-5" /> Anotar movimiento
-          </Button>
+          {canEdit ? (
+            <Button size="lg" className="h-12 w-full text-base" onClick={() => openTransaction()}>
+              <Plus className="!size-5" /> Anotar movimiento
+            </Button>
+          ) : (
+            <p className="flex items-center gap-2 rounded-xl bg-muted p-3 text-xs text-muted-foreground">
+              <Eye className="h-4 w-4" /> Libro compartido: sólo lectura
+            </p>
+          )}
         </div>
       </aside>
 
-      <div className="lg:pl-64">
+      <div className="lg:pl-64 print:!pl-0">
         {/* Encabezado */}
-        <header className="sticky top-0 z-20 border-b bg-background/85 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+        <header className="sticky top-0 z-20 print:hidden border-b bg-background/85 pt-[env(safe-area-inset-top)] backdrop-blur-md">
           <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
             <Link href="/dashboard" className="lg:hidden" aria-label="Inicio">
               <LogoMark className="h-9 w-9" />
@@ -135,13 +165,18 @@ export function AppShell({ children }: { children: ReactNode }) {
             <NotificationBell />
             <UserMenu />
           </div>
+          {!online && (
+            <div className="flex items-center justify-center gap-2 bg-warning/15 px-4 py-1.5 text-center text-xs font-medium text-warning">
+              <WifiOff className="h-3.5 w-3.5" /> Sin conexión: podés seguir anotando, se sube solo cuando vuelva la señal.
+            </div>
+          )}
         </header>
 
-        <main className="mx-auto w-full max-w-6xl px-4 pb-32 pt-5 sm:px-6 sm:pt-8 lg:pb-12">{children}</main>
+        <main className="mx-auto w-full max-w-6xl px-4 pb-32 pt-5 sm:px-6 sm:pt-8 lg:pb-12 print:max-w-none print:p-0">{children}</main>
       </div>
 
       {/* Navegación inferior (celular) */}
-      <nav className="pb-safe fixed inset-x-0 bottom-0 z-30 border-t bg-card/95 backdrop-blur-md lg:hidden" aria-label="Navegación principal">
+      <nav className="pb-safe fixed inset-x-0 bottom-0 z-30 print:hidden border-t bg-card/95 backdrop-blur-md lg:hidden" aria-label="Navegación principal">
         <div className="mx-auto grid h-16 max-w-md grid-cols-5 items-center px-2">
           {NAV.slice(0, 2).map((item) => (
             <BottomLink key={item.href} {...item} active={isActive(item.href)} />
@@ -149,17 +184,49 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="flex justify-center">
             <button
               onClick={() => openTransaction()}
-              className="-mt-7 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-4 ring-background transition-transform active:scale-95"
+              disabled={!canEdit}
+              className="disabled:opacity-40 -mt-7 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-4 ring-background transition-transform active:scale-95"
               aria-label="Anotar movimiento"
             >
               <Plus className="h-7 w-7" />
             </button>
           </div>
-          {NAV.slice(2, 4).map((item) => (
-            <BottomLink key={item.href} {...item} active={isActive(item.href)} />
-          ))}
+          <BottomLink {...NAV[2]} active={isActive(NAV[2].href)} />
+          <button
+            onClick={() => setMoreOpen(true)}
+            className={cn('flex flex-col items-center justify-center gap-1 py-1 text-[11px] font-medium', !BOTTOM.some(isActive) ? 'text-primary' : 'text-muted-foreground')}
+          >
+            <span className={cn('flex h-7 w-12 items-center justify-center rounded-full', !BOTTOM.some(isActive) && 'bg-secondary')}>
+              <Menu className="h-5 w-5" />
+            </span>
+            Más
+          </button>
         </div>
       </nav>
+
+      <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
+        <SheetContent side="bottom" className="rounded-t-3xl pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+          <SheetHeader>
+            <SheetTitle className="text-left font-headline">Más opciones</SheetTitle>
+          </SheetHeader>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {NAV.filter((n) => !BOTTOM.includes(n.href)).map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMoreOpen(false)}
+                className={cn(
+                  'flex flex-col items-center gap-2 rounded-2xl border p-4 text-center text-sm font-medium transition-colors',
+                  isActive(item.href) ? 'border-primary bg-secondary text-secondary-foreground' : 'hover:bg-muted'
+                )}
+              >
+                <item.icon className="h-6 w-6" />
+                {item.name}
+              </Link>
+            ))}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

@@ -3,17 +3,17 @@
 import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { deleteDoc, doc } from 'firebase/firestore';
+import { doc } from 'firebase/firestore';
+import { deleteWithUndo } from '@/components/shared/undo';
 import { MoreVertical, Pencil, Plus, Target, Trash2 } from 'lucide-react';
 import { useFirestore } from '@/firebase';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { BudgetDialog } from '@/components/budgets/budget-dialog';
-import { PageHeader, EmptyState, CategoryDot, ConfirmDialog } from '@/components/shared/ui-bits';
+import { PageHeader, EmptyState, CategoryDot } from '@/components/shared/ui-bits';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useToast } from '@/hooks/use-toast';
 import { formatMoney } from '@/lib/format';
 import { monthSpentByCategory } from '@/lib/alerts';
 import { cn } from '@/lib/utils';
@@ -21,10 +21,8 @@ import type { Budget } from '@/types';
 
 export default function BudgetsPage() {
   const db = useFirestore();
-  const { toast } = useToast();
-  const { budgets, transactions, categories, currency, activeWallet, isDataLoading } = useWallet();
+  const { budgets, bookTransactions: transactions, categories, currency, activeWallet, isDataLoading, canEdit } = useWallet();
   const [dialog, setDialog] = useState<{ open: boolean; budget: Budget | null }>({ open: false, budget: null });
-  const [toDelete, setToDelete] = useState<Budget | null>(null);
 
   const spent = useMemo(() => monthSpentByCategory(transactions), [transactions]);
   const totalLimit = budgets.reduce((s, b) => s + b.limitAmount, 0);
@@ -32,15 +30,9 @@ export default function BudgetsPage() {
   const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
   const dayOfMonth = new Date().getDate();
 
-  const remove = async () => {
-    if (!toDelete || !activeWallet) return;
-    try {
-      await deleteDoc(doc(db, 'wallets', activeWallet.id, 'budgets', toDelete.id));
-      toast({ title: 'Presupuesto eliminado' });
-    } catch {
-      toast({ variant: 'destructive', title: 'No se pudo eliminar' });
-    }
-    setToDelete(null);
+  const remove = async (b: Budget) => {
+    if (!activeWallet) return;
+    await deleteWithUndo(db, [{ ref: doc(db, 'wallets', activeWallet.id, 'budgets', b.id), data: b }], 'Presupuesto eliminado');
   };
 
   return (
@@ -118,7 +110,7 @@ export default function BudgetsPage() {
                         <DropdownMenuItem className="gap-2" onClick={() => setDialog({ open: true, budget: b })}>
                           <Pencil className="h-4 w-4" /> Editar
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive" onClick={() => setToDelete(b)}>
+                        <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive" onClick={() => remove(b)}>
                           <Trash2 className="h-4 w-4" /> Eliminar
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -156,13 +148,6 @@ export default function BudgetsPage() {
       )}
 
       <BudgetDialog open={dialog.open} onOpenChange={(open) => setDialog((d) => ({ ...d, open }))} budget={dialog.budget} />
-      <ConfirmDialog
-        open={!!toDelete}
-        onOpenChange={(o) => !o && setToDelete(null)}
-        title="¿Eliminar este presupuesto?"
-        description="Tus movimientos no se borran; sólo se quita el tope."
-        onConfirm={remove}
-      />
     </div>
   );
 }

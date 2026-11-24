@@ -1,9 +1,9 @@
 import { cn } from '@/lib/utils';
-import { useId } from 'react';
 
 /** Isotipo de Mi Bolsillo: un bolsillo con una moneda entrando. */
 export function LogoMark({ className }: { className?: string }) {
-  const id = useId().replace(/:/g, '');
+  // Ids fijos: todas las instancias usan los mismos gradientes (evita diferencias servidor/cliente)
+  const id = '-mibolsillo';
   return (
     <svg viewBox="0 0 64 64" fill="none" aria-hidden="true" className={cn('h-9 w-9 shrink-0', className)}>
       <defs>

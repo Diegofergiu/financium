@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { CategoryDot } from '@/components/shared/ui-bits';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { safeWrite } from '@/lib/write';
 import { parseAmount } from '@/lib/format';
 import type { Budget } from '@/types';
 
@@ -52,16 +53,16 @@ export function BudgetDialog({ open, onOpenChange, budget }: { open: boolean; on
     setSaving(true);
     try {
       if (isEdit) {
-        await updateDoc(doc(db, 'wallets', activeWallet.id, 'budgets', budget!.id), { ...data, updatedAt: serverTimestamp() });
+        await safeWrite(updateDoc(doc(db, 'wallets', activeWallet.id, 'budgets', budget!.id), { ...data, updatedAt: serverTimestamp() }));
         toast({ title: 'Presupuesto actualizado' });
       } else {
-        await addDoc(collection(db, 'wallets', activeWallet.id, 'budgets'), {
+        await safeWrite(addDoc(collection(db, 'wallets', activeWallet.id, 'budgets'), {
           ...data,
           walletId: activeWallet.id,
           ...authFields,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
-        });
+        }));
         toast({ title: 'Presupuesto creado', description: 'Te avisaremos cuando llegues al 80%.' });
       }
       onOpenChange(false);

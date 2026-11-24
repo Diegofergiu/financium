@@ -3,8 +3,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { signOut, updateProfile, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
-import { Bell, BookOpen, Download, KeyRound, LogOut, Palette, Smartphone, Tags, User, Loader2, Settings, Plus } from 'lucide-react';
+import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { Bell, BookOpen, Download, KeyRound, LogOut, Palette, Smartphone, Tags, User, Loader2, Settings, Plus, Users } from 'lucide-react';
+import { MembersManager } from '@/components/settings/members-manager';
 import { useAuth, useFirestore, useUser } from '@/firebase';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { useNotifications } from '@/components/providers/notifications-provider';
@@ -49,8 +50,9 @@ export default function SettingsPage() {
   const db = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
-  const { theme, setTheme } = useTheme();
-  const { activeWallet, wallets, deleteWallet, setActiveWalletId } = useWallet();
+  const { theme, setTheme, textSize, setTextSize } = useTheme();
+  const { activeWallet, wallets, deleteWallet, setActiveWalletId, isOwner, canEdit } = useWallet();
+  const [weekly, setWeekly] = useState(true);
   const notif = useNotifications();
 
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
@@ -66,6 +68,12 @@ export default function SettingsPage() {
   const [isIOS, setIsIOS] = useState(false);
 
   useEffect(() => setDisplayName(user?.displayName ?? ''), [user]);
+  useEffect(() => {
+    if (!user) return;
+    getDoc(doc(db, 'users', user.uid))
+      .then((d) => setWeekly(d.data()?.weeklySummary !== false))
+      .catch(() => {});
+  }, [db, user]);
   useEffect(() => {
     setWalletName(activeWallet?.name ?? '');
     setWalletCurrency(activeWallet?.currency ?? DEFAULT_CURRENCY);
@@ -236,6 +244,22 @@ export default function SettingsPage() {
                 )}
               </>
             )}
+            {notif.enabled && notif.permission === 'granted' && (
+              <div className="flex items-center justify-between gap-4 rounded-xl border p-3">
+                <div>
+                  <p className="text-sm font-semibold">Resumen semanal</p>
+                  <p className="text-xs text-muted-foreground">Los lunes: cuánto entró y salió la semana pasada.</p>
+                </div>
+                <Switch
+                  checked={weekly}
+                  aria-label="Resumen semanal"
+                  onCheckedChange={(v) => {
+                    setWeekly(v);
+                    if (user) setDoc(doc(db, 'users', user.uid), { id: user.uid, weeklySummary: v }, { merge: true }).catch(() => {});
+                  }}
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Avisarme de cheques con</Label>
               <Select value={String(notif.notifyDays)} onValueChange={(v) => notif.setNotifyDays(Number(v))}>
@@ -263,6 +287,18 @@ export default function SettingsPage() {
                 { value: 'system', label: 'Automático' },
               ]}
             />
+            <div className="space-y-2">
+              <Label>Tamaño de la letra</Label>
+              <Segmented
+                value={textSize}
+                onChange={setTextSize}
+                options={[
+                  { value: 'normal', label: 'Normal' },
+                  { value: 'large', label: 'Grande' },
+                  { value: 'xl', label: 'Muy grande' },
+                ]}
+              />
+            </div>
           </Section>
 
           {!isStandalone && (
@@ -304,18 +340,22 @@ export default function SettingsPage() {
               </Select>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button onClick={saveWallet} disabled={savingWallet || !walletName.trim()}>
+              <Button onClick={saveWallet} disabled={savingWallet || !walletName.trim() || !canEdit}>
                 {savingWallet && <Loader2 className="animate-spin" />} Guardar libro
               </Button>
               <Button variant="outline" onClick={() => setNewWalletOpen(true)}>
                 <Plus /> Nuevo libro
               </Button>
-              {wallets.length > 1 && (
+              {wallets.length > 1 && isOwner && (
                 <Button variant="ghost" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => setConfirmDeleteWallet(true)} disabled={deletingWallet}>
                   {deletingWallet && <Loader2 className="animate-spin" />} Eliminar libro
                 </Button>
               )}
             </div>
+          </Section>
+
+          <Section icon={Users} title="Personas con acceso" description="Compartí este libro para ver o anotar en las mismas cuentas.">
+            <MembersManager />
           </Section>
 
           <Section icon={Tags} title="Categorías" description={`Del libro “${activeWallet?.name}”.`}>

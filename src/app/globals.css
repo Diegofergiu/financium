@@ -119,3 +119,22 @@
     scrollbar-width: none;
   }
 }
+
+@media print {
+  @page {
+    margin: 14mm;
+  }
+  html {
+    font-size: 12px !important;
+  }
+  body {
+    background: white !important;
+    color: black;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  [data-radix-toast-viewport],
+  li[role='status'] {
+    display: none !important;
+  }
+}

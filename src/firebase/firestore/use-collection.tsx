@@ -71,43 +71,57 @@ export function useCollection<T = any>(
 
     setIsLoading(true);
     setError(null);
+    // Al cambiar de consulta no mostrar datos de la anterior (p. ej. de otro libro)
+    setData(null);
 
-    // Directly use memoizedTargetRefOrQuery as it's assumed to be the final query
-    const unsubscribe = onSnapshot(
-      memoizedTargetRefOrQuery,
-      (snapshot: QuerySnapshot<DocumentData>) => {
-        const results: ResultItemType[] = [];
-        for (const doc of snapshot.docs) {
-          results.push({ ...(doc.data() as T), id: doc.id });
+    let unsubscribe: () => void = () => {};
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let attempt = 0;
+    let cancelled = false;
+
+    const subscribe = () => {
+      unsubscribe = onSnapshot(
+        memoizedTargetRefOrQuery,
+        (snapshot: QuerySnapshot<DocumentData>) => {
+          attempt = 0;
+          const results: ResultItemType[] = [];
+          for (const doc of snapshot.docs) {
+            results.push({ ...(doc.data() as T), id: doc.id });
+          }
+          setData(results);
+          setError(null);
+          setIsLoading(false);
+        },
+        (error: FirestoreError) => {
+          // Recién creado un libro (o aceptada una invitación), el servidor puede tardar un instante
+          // en reflejar el acceso: se reintenta antes de dar el error por definitivo.
+          if (!cancelled && attempt < 4 && ['permission-denied', 'unavailable', 'resource-exhausted'].includes(error.code)) {
+            attempt++;
+            retryTimer = setTimeout(() => !cancelled && subscribe(), 600 * attempt);
+            return;
+          }
+          const path: string =
+            memoizedTargetRefOrQuery.type === 'collection'
+              ? (memoizedTargetRefOrQuery as CollectionReference).path
+              : (memoizedTargetRefOrQuery as unknown as InternalQuery)._query.path.canonicalString();
+
+          const contextualError = new FirestorePermissionError({ operation: 'list', path });
+          // Conservar el código original (permission-denied, failed-precondition, unavailable…)
+          (contextualError as any).code = error.code;
+          setError(contextualError);
+          setData(null);
+          setIsLoading(false);
+          errorEmitter.emit('permission-error', contextualError);
         }
-        setData(results);
-        setError(null);
-        setIsLoading(false);
-      },
-      (error: FirestoreError) => {
-        // This logic extracts the path from either a ref or a query
-        const path: string =
-          memoizedTargetRefOrQuery.type === 'collection'
-            ? (memoizedTargetRefOrQuery as CollectionReference).path
-            : (memoizedTargetRefOrQuery as unknown as InternalQuery)._query.path.canonicalString()
+      );
+    };
+    subscribe();
 
-        const contextualError = new FirestorePermissionError({
-          operation: 'list',
-          path,
-        })
-
-        // Conservar el código original (permission-denied, failed-precondition, unavailable…)
-        ;(contextualError as any).code = error.code
-        setError(contextualError)
-        setData(null)
-        setIsLoading(false)
-
-        // trigger global error propagation
-        errorEmitter.emit('permission-error', contextualError);
-      }
-    );
-
-    return () => unsubscribe();
+    return () => {
+      cancelled = true;
+      clearTimeout(retryTimer);
+      unsubscribe();
+    };
   }, [memoizedTargetRefOrQuery]); // Re-run if the target query/reference changes.
   if(memoizedTargetRefOrQuery && !memoizedTargetRefOrQuery.__memo) {
     throw new Error(memoizedTargetRefOrQuery + ' was not properly memoized using useMemoFirebase');

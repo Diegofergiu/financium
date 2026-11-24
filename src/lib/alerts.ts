@@ -1,4 +1,5 @@
-import type { Budget, Category, Check, Transaction } from '@/types';
+import type { Budget, Category, Check, Recurring, Transaction } from '@/types';
+import { recurringDate } from './recurring';
 import { daysUntil, formatMoney, relativeDays } from './format';
 import { format } from 'date-fns';
 
@@ -11,7 +12,7 @@ export interface AppAlert {
   title: string;
   body: string;
   href: string;
-  kind: 'check' | 'budget';
+  kind: 'check' | 'budget' | 'recurring';
 }
 
 export const NOTIFY_DAYS_KEY = 'mibolsillo:notify-days';
@@ -43,8 +44,9 @@ export function computeAlerts(params: {
   categories: Category[];
   currency: string;
   notifyDays: number;
+  recurring?: Recurring[];
 }): AppAlert[] {
-  const { checks, budgets, transactions, categories, currency, notifyDays } = params;
+  const { checks, budgets, transactions, categories, currency, notifyDays, recurring = [] } = params;
   const alerts: AppAlert[] = [];
 
   for (const c of checks) {
@@ -79,6 +81,23 @@ export function computeAlerts(params: {
       title: over ? `Presupuesto superado: ${b.name}` : `Presupuesto casi agotado: ${b.name}`,
       body: `${cat}: gastaste ${formatMoney(used, currency)} de ${formatMoney(b.limitAmount, currency)} (${Math.round(pct * 100)}%)`,
       href: '/budgets',
+    });
+  }
+
+  // Gastos fijos que se anotan a mano: recordatorio de pago (hasta 3 días antes)
+  for (const r of recurring) {
+    if (!r.active || r.autoCreate || (r.lastCreatedMonth ?? '') >= month) continue;
+    const date = recurringDate(r.dayOfMonth, month);
+    const days = daysUntil(date);
+    if (days > Math.min(3, notifyDays)) continue;
+    const verb = r.type === 'income' ? 'Cobrar' : 'Pagar';
+    alerts.push({
+      id: `recurring-${r.id}-${month}-${days < 0 ? 'overdue' : days === 0 ? 'today' : 'soon'}`,
+      kind: 'recurring',
+      severity: days < 0 ? 'critical' : days === 0 ? 'warning' : 'info',
+      title: `${verb} ${r.description}: ${formatMoney(r.amount, currency)}`,
+      body: days < 0 ? `Era el día ${r.dayOfMonth}. Si ya lo hiciste, marcalo como hecho.` : days === 0 ? 'Es hoy.' : `En ${days} día${days > 1 ? 's' : ''} (día ${r.dayOfMonth}).`,
+      href: '/recurring',
     });
   }
 

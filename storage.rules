@@ -1,0 +1,33 @@
+/**
+ * Reglas de Firebase Storage de Mi Bolsillo.
+ * Fotos y PDF adjuntos: wallets/{walletId}/attachments/{uid}/{archivo}
+ * Sólo los miembros del libro pueden verlos; sólo dueño/editores pueden subir o borrar,
+ * y cada uno sube dentro de su propia carpeta. Máximo 8 MB, sólo imágenes o PDF.
+ */
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function wallet(walletId) {
+      return firestore.get(/databases/(default)/documents/wallets/$(walletId)).data;
+    }
+    function isMember(walletId) {
+      return request.auth != null && request.auth.uid in wallet(walletId).members;
+    }
+    function canWrite(walletId) {
+      return isMember(walletId) && wallet(walletId).members[request.auth.uid] in ['owner', 'editor'];
+    }
+
+    match /wallets/{walletId}/attachments/{uid}/{fileName} {
+      allow read: if isMember(walletId);
+      allow create: if canWrite(walletId)
+        && request.auth.uid == uid
+        && request.resource.size < 8 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+      allow delete: if canWrite(walletId);
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
