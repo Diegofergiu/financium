@@ -29,7 +29,7 @@ Al registrarse se crea uno automáticamente con categorías listas para usar.
 
 ## Puesta en marcha
 
-### 1. Firebase (una sola vez, en la [consola](https://console.firebase.google.com/) del proyecto `studio-1176439213-c80ed`)
+### 1. Firebase (una sola vez, en la [consola](https://console.firebase.google.com/) del proyecto `mi-bolsillo-2-22650111-8373c`)
 
 1. **Authentication → Sign-in method:** habilitar *Correo electrónico/contraseña* y *Google*.
 2. **Authentication → Settings → Authorized domains:** agregar el dominio donde se publique la app.

@@ -96,6 +96,8 @@ export function useCollection<T = any>(
           path,
         })
 
+        // Conservar el código original (permission-denied, failed-precondition, unavailable…)
+        ;(contextualError as any).code = error.code
         setError(contextualError)
         setData(null)
         setIsLoading(false)

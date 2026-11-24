@@ -77,6 +77,8 @@ export function useDoc<T = any>(
           path: memoizedDocRef.path,
         })
 
+        // Conservar el código original (permission-denied, failed-precondition, unavailable…)
+        ;(contextualError as any).code = error.code
         setError(contextualError)
         setData(null)
         setIsLoading(false)

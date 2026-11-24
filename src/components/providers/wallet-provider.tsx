@@ -24,6 +24,8 @@ interface WalletContextValue {
   setActiveWalletId: (id: string) => void;
   isLoading: boolean;
   loadError: boolean;
+  /** Código del error al cargar los libros (p. ej. 'permission-denied'). */
+  loadErrorCode: string | null;
   categories: Category[];
   transactions: Transaction[];
   checks: Check[];
@@ -204,6 +206,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setActiveWalletId,
     isLoading: !!user && walletsRaw === null && !walletsError,
     loadError: !!walletsError,
+    loadErrorCode: (walletsError as any)?.code ?? null,
     categories,
     transactions,
     checks,
