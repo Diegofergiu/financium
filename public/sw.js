@@ -1,5 +1,5 @@
 /* Service worker de Mi Bolsillo: hace la app instalable y gestiona los clics en notificaciones. */
-const VERSION = 'mibolsillo-v1';
+const VERSION = 'mibolsillo-v2';
 const SHELL = ['/icons/icon-192.png', '/icons/icon-512.png', '/icons/badge-96.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -48,21 +48,25 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// Listo para Web Push (Firebase Cloud Messaging u otro servidor) si se configura en el futuro.
+// Avisos enviados por el servidor (Firebase Cloud Messaging), llegan aunque la app esté cerrada.
 self.addEventListener('push', (event) => {
-  let data = {};
+  let payload = {};
   try {
-    data = event.data ? event.data.json() : {};
+    payload = event.data ? event.data.json() : {};
   } catch (e) {
-    data = { title: 'Mi Bolsillo', body: event.data && event.data.text() };
+    payload = { data: { title: 'Mi Bolsillo', body: event.data && event.data.text() } };
   }
-  const n = data.notification || data;
+  // FCM envía { data: {...} }; también se aceptan { notification: {...} } o el objeto plano
+  const n = payload.data || payload.notification || payload;
   event.waitUntil(
     self.registration.showNotification(n.title || 'Mi Bolsillo', {
       body: n.body || '',
       icon: '/icons/icon-192.png',
       badge: '/icons/badge-96.png',
-      data: { url: (data.data && data.data.url) || n.url || '/dashboard' },
+      // Mismo "tag" que los avisos locales: el celular reemplaza en vez de duplicar
+      tag: n.tag || undefined,
+      lang: 'es',
+      data: { url: n.url || '/dashboard' },
     })
   );
 });

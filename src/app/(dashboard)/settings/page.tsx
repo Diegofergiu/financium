@@ -200,15 +200,39 @@ export default function SettingsPage() {
                   <div>
                     <p className="text-sm font-semibold">Notificaciones en este dispositivo</p>
                     <p className="text-xs text-muted-foreground">
-                      {notif.permission === 'denied' ? 'Bloqueadas por el navegador. Habilitalas desde la configuración del sitio.' : 'Te avisamos aunque estés en otra pestaña.'}
+                      {notif.permission === 'denied' ? 'Bloqueadas por el navegador. Habilitalas desde la configuración del sitio.' : 'Te avisamos todos los días a las 9, aunque la app esté cerrada.'}
                     </p>
                   </div>
                   <Switch checked={notif.enabled && notif.permission === 'granted'} onCheckedChange={toggleNotifications} disabled={notif.permission === 'denied'} aria-label="Activar notificaciones" />
                 </div>
                 {notif.enabled && notif.permission === 'granted' && (
-                  <Button variant="outline" size="sm" onClick={() => notif.sendTest()}>
-                    Enviar notificación de prueba
-                  </Button>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-2 rounded-xl bg-muted/50 p-3 text-xs">
+                      <span
+                        className={`mt-1 h-2 w-2 shrink-0 rounded-full ${notif.serverPush === 'active' ? 'bg-income' : notif.serverPush === 'registering' ? 'animate-pulse bg-warning' : 'bg-muted-foreground'}`}
+                      />
+                      <span className="text-muted-foreground">
+                        {notif.serverPush === 'active' && 'Avisos con la app cerrada: activos en este dispositivo.'}
+                        {notif.serverPush === 'registering' && 'Registrando este dispositivo…'}
+                        {(notif.serverPush === 'unavailable' || notif.serverPush === 'off') &&
+                          (isIOS
+                            ? 'Para recibir avisos con la app cerrada en iPhone, abrila desde el ícono de la pantalla de inicio.'
+                            : 'Este navegador sólo muestra avisos con la app abierta.')}
+                      </span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        const r = await notif.sendTest();
+                        if (r === 'server') toast({ title: 'Prueba enviada', description: 'En unos segundos te llega la notificación desde el servidor.' });
+                        else if (r === 'local') toast({ title: 'Prueba mostrada', description: 'Los avisos del servidor todavía no están disponibles; con la app abierta funcionan igual.' });
+                        else toast({ variant: 'destructive', title: 'No se pudo mostrar la notificación' });
+                      }}
+                    >
+                      Enviar notificación de prueba
+                    </Button>
+                  </div>
                 )}
               </>
             )}

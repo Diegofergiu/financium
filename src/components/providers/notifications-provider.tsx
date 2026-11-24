@@ -2,6 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useWallet } from './wallet-provider';
+import { useFirebaseApp, useFirestore, useUser } from '@/firebase';
+import { registerPush, unregisterPush, sendServerTestPush, saveNotifyDays, pushSupported } from '@/firebase/push';
 import { computeAlerts, getNotifyDays, NOTIFY_DAYS_KEY, type AppAlert } from '@/lib/alerts';
 
 const SEEN_KEY = 'mibolsillo:seen-alerts';
@@ -9,6 +11,8 @@ const NOTIFIED_KEY = 'mibolsillo:notified-alerts';
 const ENABLED_KEY = 'mibolsillo:push-enabled';
 
 type PermissionState = NotificationPermission | 'unsupported';
+/** Estado de los avisos con la app cerrada (enviados por el servidor). */
+export type ServerPushState = 'off' | 'registering' | 'active' | 'unavailable';
 
 interface NotificationsContextValue {
   alerts: AppAlert[];
@@ -18,7 +22,8 @@ interface NotificationsContextValue {
   enabled: boolean;
   enable: () => Promise<boolean>;
   disable: () => void;
-  sendTest: () => Promise<boolean>;
+  sendTest: () => Promise<'server' | 'local' | false>;
+  serverPush: ServerPushState;
   notifyDays: number;
   setNotifyDays: (d: number) => void;
 }
@@ -79,6 +84,29 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [seen, setSeen] = useState<Set<string>>(new Set());
   const [permission, setPermission] = useState<PermissionState>('default');
   const [enabled, setEnabled] = useState(false);
+  const [serverPush, setServerPush] = useState<ServerPushState>('off');
+  const app = useFirebaseApp();
+  const db = useFirestore();
+  const { user } = useUser();
+
+  const registerServerPush = useCallback(
+    async (days: number) => {
+      if (!user) return;
+      if (!(await pushSupported())) {
+        setServerPush('unavailable');
+        return;
+      }
+      setServerPush('registering');
+      try {
+        const token = await registerPush(app, db, user.uid, days);
+        setServerPush(token ? 'active' : 'unavailable');
+      } catch (e) {
+        console.warn('No se pudo registrar el dispositivo para avisos push', e);
+        setServerPush('unavailable');
+      }
+    },
+    [app, db, user]
+  );
 
   useEffect(() => {
     setNotifyDaysState(getNotifyDays());
@@ -91,6 +119,11 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     // Registrar el service worker (app instalable + clics en notificaciones)
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   }, []);
+
+  // Si ya estaban activadas, renovar el registro del dispositivo (los tokens pueden cambiar)
+  useEffect(() => {
+    if (enabled && permission === 'granted') registerServerPush(getNotifyDays());
+  }, [enabled, permission, registerServerPush]);
 
   const alerts = useMemo(
     () => (isDataLoading ? [] : computeAlerts({ checks, budgets, transactions, categories, currency, notifyDays })),
@@ -136,34 +169,48 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     setPermission(result);
     const ok = result === 'granted';
     setEnabled(ok);
+    if (ok) await registerServerPush(getNotifyDays());
     try {
       localStorage.setItem(ENABLED_KEY, ok ? '1' : '0');
     } catch {}
     return ok;
-  }, []);
+  }, [registerServerPush]);
 
   const disable = useCallback(() => {
     setEnabled(false);
+    setServerPush('off');
+    if (user) unregisterPush(app, db, user.uid).catch(() => {});
     try {
       localStorage.setItem(ENABLED_KEY, '0');
     } catch {}
-  }, []);
+  }, [app, db, user]);
 
-  const sendTest = useCallback(async () => {
+  const sendTest = useCallback(async (): Promise<'server' | 'local' | false> => {
     if (permission !== 'granted') return false;
-    return showSystemNotification('¡Las notificaciones funcionan! 🎉', 'Te vamos a avisar de cheques por vencer y presupuestos.', '/dashboard', 'mibolsillo-test');
-  }, [permission]);
+    // Primero por el servidor (prueba el circuito completo); si no está disponible, local
+    if (serverPush === 'active') {
+      try {
+        const r = await sendServerTestPush(app);
+        if (r.sent > 0) return 'server';
+      } catch (e) {
+        console.warn('Prueba desde el servidor no disponible', e);
+      }
+    }
+    const ok = await showSystemNotification('¡Las notificaciones funcionan! 🎉', 'Te vamos a avisar de cheques por vencer y presupuestos.', '/dashboard', 'mibolsillo-test');
+    return ok ? 'local' : false;
+  }, [permission, serverPush, app]);
 
   const setNotifyDays = useCallback((d: number) => {
     setNotifyDaysState(d);
     try {
       localStorage.setItem(NOTIFY_DAYS_KEY, String(d));
     } catch {}
-  }, []);
+    if (user) saveNotifyDays(db, user.uid, d).catch(() => {});
+  }, [db, user]);
 
   return (
     <Ctx.Provider
-      value={{ alerts, unreadCount, markAllRead, permission, enabled, enable, disable, sendTest, notifyDays, setNotifyDays }}
+      value={{ alerts, unreadCount, markAllRead, permission, enabled, enable, disable, sendTest, serverPush, notifyDays, setNotifyDays }}
     >
       {children}
     </Ctx.Provider>

@@ -22,10 +22,12 @@ Al registrarse se crea uno automáticamente con categorías listas para usar.
 ### Notificaciones
 
 - **Campanita** en la app con todos los avisos: cheques vencidos o por vencer (anticipación configurable) y presupuestos al 80 %/superados.
-- **Notificaciones del sistema** (Android, compu; en iPhone sólo con la app agregada a la pantalla de inicio, iOS 16.4+):
-  se muestran al abrir la app o mientras está abierta, una sola vez por aviso. Tocar la notificación abre la pantalla correspondiente.
-- El *service worker* (`public/sw.js`) ya maneja eventos `push`, así que se puede sumar Firebase Cloud Messaging + una
-  Cloud Function programada para recibir avisos **con la app cerrada** (requiere plan Blaze de Firebase).
+- **Avisos con la app cerrada (push):** la Cloud Function `avisosDiarios` (`functions/`) corre todos los días a las 9:00
+  (hora de Argentina), revisa los libros de cada usuario con notificaciones activas y envía por Firebase Cloud Messaging
+  sólo los avisos nuevos (cada aviso se envía una vez: "por vencer", "vence hoy" y "vencido" son avisos distintos).
+  Los tokens de dispositivos que ya no existen se borran solos.
+- En **iPhone** las notificaciones requieren abrir la app desde el ícono de la pantalla de inicio (iOS 16.4+).
+- Desde **Ajustes → Notificaciones → Enviar notificación de prueba** se prueba el circuito completo desde el servidor.
 
 ## Puesta en marcha
 
@@ -39,13 +41,32 @@ Al registrarse se crea uno automáticamente con categorías listas para usar.
    npx firebase-tools deploy --only firestore:rules
    ```
 
-### 2. IA (opcional)
+### 2. Cloud Functions (avisos push, requiere plan Blaze)
+
+Desde una terminal con `firebase-tools` (en Firebase Studio ya viene instalado):
+
+```bash
+cd functions && npm install && cd ..
+npx firebase-tools deploy --only functions,firestore:rules --project mi-bolsillo-2-22650111-8373c
+```
+
+La primera vez Firebase habilita solo las APIs necesarias (Cloud Functions, Cloud Scheduler, Cloud Build).
+Opcional: en *Configuración del proyecto → Cloud Messaging → Certificados push web* se puede generar un par de claves y
+definirlo como `NEXT_PUBLIC_FIREBASE_VAPID_KEY`; si no, se usa la clave por defecto de Firebase.
+
+Pruebas de la lógica de avisos (con el emulador):
+
+```bash
+npx firebase-tools emulators:exec --only firestore "npm --prefix functions test"
+```
+
+### 3. IA (opcional)
 
 La sugerencia de categoría funciona sin IA con reglas por palabras clave. Para la sugerencia con IA y la lectura de
 tickets por foto, crear una clave en [Google AI Studio](https://aistudio.google.com/apikey) y definirla como
 `GEMINI_API_KEY` (en `.env.local` para desarrollo, o como secreto en `apphosting.yaml` en producción).
 
-### 3. Desarrollo
+### 4. Desarrollo
 
 ```bash
 npm install
@@ -59,7 +80,7 @@ npx firebase-tools emulators:start --only auth,firestore
 NEXT_PUBLIC_USE_EMULATORS=true npm run dev
 ```
 
-### 4. Producción
+### 5. Producción
 
 ```bash
 npm run build && npm start
