@@ -26,6 +26,11 @@ service firebase.storage {
       allow delete: if canWrite(walletId);
     }
 
+    // Marca de versión (ver src/lib/rules-check.ts)
+    match /_rules/{version} {
+      allow read: if request.auth != null && version == 'v3';
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }

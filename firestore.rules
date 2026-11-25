@@ -32,6 +32,12 @@ service cloud.firestore {
       return /databases/$(database)/documents/wallets/$(walletId);
     }
 
+    // Marca de versión: la app la consulta para saber si las reglas publicadas están al día.
+    // Al cambiar estas reglas, subir el número aquí y en src/lib/rules-check.ts.
+    match /_rules/{version} {
+      allow get: if signedIn() && version == 'v3';
+    }
+
     match /users/{userId} {
       allow get: if signedIn() && request.auth.uid == userId;
       allow list: if false;

@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { deleteDoc, deleteField, doc, FieldPath, query, collection, where, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { sendEmailVerification } from 'firebase/auth';
 import { Copy, Crown, Eye, Loader2, LogOut, MailCheck, Pencil, Send, UserMinus, X } from 'lucide-react';
-import { useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
+import { getFirebaseStorage, useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
+import { checkRules } from '@/lib/rules-check';
 import { useWallet, inviteId } from '@/components/providers/wallet-provider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,7 +70,21 @@ export function MembersManager() {
       toast({ title: 'Invitación creada', description: `Cuando ${mail} entre a Mi Bolsillo con ese correo, va a ver la invitación.` });
     } catch (err) {
       console.error(err);
-      toast({ variant: 'destructive', title: 'No se pudo invitar', description: 'Si ya la habías invitado y rechazó, cancelá la invitación anterior primero.' });
+      const code = (err as any)?.code;
+      const rules = code === 'unavailable' ? null : await checkRules(db, getFirebaseStorage()).catch(() => null);
+      const prev = (invites ?? []).find((i) => i.email === mail);
+      toast({
+        variant: 'destructive',
+        title: 'No se pudo invitar',
+        description:
+          rules?.firestore === 'outdated'
+            ? 'Las reglas de seguridad publicadas en Firebase son de una versión anterior. Publicá las reglas nuevas (ver el aviso arriba en Ajustes).'
+            : prev && prev.status !== 'pending'
+              ? `Ya habías invitado a ${mail} y ${prev.status === 'declined' ? 'rechazó' : 'aceptó'}. Tocá “Limpiar” y volvé a invitar.`
+              : code === 'unavailable'
+                ? 'Sin conexión. Probá de nuevo cuando tengas internet.'
+                : 'Probá de nuevo en un momento.',
+      });
     } finally {
       setSending(false);
     }

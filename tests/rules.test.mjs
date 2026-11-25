@@ -142,3 +142,18 @@ test('storage: sólo miembros suben y ven fotos del libro', async () => {
 });
 
 
+
+test('libro creado por la versión vieja de la app: se puede invitar', async () => {
+  const a = await newUser('old');
+  const w = doc(collection(a.db, 'wallets'));
+  // Así guardaba los libros la primera versión (sin memberInfo ni currency)
+  await ok(setDoc(w, { name: 'Mis finanzas', ownerId: a.uid, members: { [a.uid]: 'owner' }, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+  const mail = `otra${Date.now()}@gmail.com`;
+  await ok(setDoc(doc(a.db, 'invites', `${w.id}__${mail}`), { walletId: w.id, walletName: 'Mis finanzas', email: mail, role: 'editor', status: 'pending', invitedBy: a.uid, invitedByName: 'Diego', createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+});
+
+test('marca de versión de reglas', async () => {
+  const a = await newUser('v');
+  await ok(getDoc(doc(a.db, '_rules', 'v3')));
+  await denied(getDoc(doc(a.db, '_rules', 'v2')));
+});

@@ -7,6 +7,7 @@ import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firest
 import { Bell, BookOpen, Download, KeyRound, LogOut, Palette, Smartphone, Tags, User, Loader2, Settings, Plus, Users, Ticket } from 'lucide-react';
 import { CheckRemindersEditor } from '@/components/settings/check-reminders-editor';
 import { MembersManager } from '@/components/settings/members-manager';
+import { RulesStatusBanner } from '@/components/settings/rules-status';
 import { useAuth, useFirestore, useUser } from '@/firebase';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { useNotifications } from '@/components/providers/notifications-provider';
@@ -173,6 +174,8 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <PageHeader icon={Settings} title="Ajustes" description="Tu cuenta, tus libros y cómo querés que te avisemos." />
 
+      <RulesStatusBanner />
+
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="space-y-4">
           <Section icon={User} title="Tu perfil">
@@ -209,7 +212,7 @@ export default function SettingsPage() {
                   <div>
                     <p className="text-sm font-semibold">Notificaciones en este dispositivo</p>
                     <p className="text-xs text-muted-foreground">
-                      {notif.permission === 'denied' ? 'Bloqueadas por el navegador. Habilitalas desde la configuración del sitio.' : 'Te avisamos todos los días a las 9, aunque la app esté cerrada.'}
+                      {notif.permission === 'denied' ? 'Bloqueadas por el navegador. Habilitalas desde la configuración del sitio.' : `Te avisamos a las ${String(notif.reminders.hour).padStart(2, '0')}:00, aunque la app esté cerrada.`}
                     </p>
                   </div>
                   <Switch checked={notif.enabled && notif.permission === 'granted'} onCheckedChange={toggleNotifications} disabled={notif.permission === 'denied'} aria-label="Activar notificaciones" />
