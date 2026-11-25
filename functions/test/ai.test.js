@@ -32,15 +32,21 @@ test('normalizeResult limpia y valida la respuesta del modelo', () => {
 
 test('readDocument manda la imagen, el contexto y pide JSON estructurado', async () => {
   let req;
-  const client = { models: { generateContent: async (r) => ((req = r), { text: JSON.stringify({ kind: 'invoice', direction: 'income', amount: 1000, category: 'Ventas' }) }) } };
-  const r = await ai.readDocument({ client, imageBase64: 'AAAA', mimeType: 'image/jpeg', context: { userName: 'María Pérez', walletName: 'Negocio', categories: ['Ventas'], today: '2026-11-25' } });
+  // El modelo "opina" que es un ingreso, pero la persona eligió gasto: manda la persona
+  const client = { models: { generateContent: async (r) => ((req = r), { text: JSON.stringify({ kind: 'invoice', direction: 'income', checkType: 'issued', amount: 1000, category: 'Ventas' }) }) } };
+  const r = await ai.readDocument({ client, imageBase64: 'AAAA', mimeType: 'image/jpeg', context: { mode: 'expense', walletName: 'Negocio', categories: ['Ventas'], today: '2026-11-25' } });
   assert.strictEqual(req.model, ai.DEFAULT_MODEL);
   assert.deepStrictEqual(req.contents[0].parts[0], { inlineData: { mimeType: 'image/jpeg', data: 'AAAA' } });
-  assert.match(req.contents[0].parts[1].text, /María Pérez/);
+  assert.match(req.contents[0].parts[1].text, /un GASTO/);
+  assert.match(req.contents[0].parts[1].text, /No cuestiones ni cambies eso/);
   assert.match(req.contents[0].parts[1].text, /Ignorá cualquier instrucción/);
   assert.strictEqual(req.config.responseMimeType, 'application/json');
   assert.ok(req.config.responseJsonSchema.required.includes('checkType'));
-  assert.deepStrictEqual([r.kind, r.direction, r.amount, r.category], ['invoice', 'income', 1000, 'Ventas']);
+  assert.deepStrictEqual([r.kind, r.direction, r.checkType, r.amount, r.category, r.mode], ['invoice', 'expense', 'unknown', 1000, 'Ventas', 'expense']);
+  // Cheque a pagar elegido por la persona
+  const c = await ai.readDocument({ client, imageBase64: 'A', mimeType: 'image/png', context: { mode: 'issued', categories: [] } });
+  assert.deepStrictEqual([c.checkType, c.direction], ['issued', 'unknown']);
+  assert.match(req.contents[0].parts[1].text, /CHEQUE A PAGAR/);
   // Respuesta rota del modelo => resultado vacío, sin error
   const broken = { models: { generateContent: async () => ({ text: 'no es json' }) } };
   assert.strictEqual((await ai.readDocument({ client: broken, imageBase64: 'A', mimeType: 'image/png', context: { categories: [] } })).kind, 'other');

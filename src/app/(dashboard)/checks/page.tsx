@@ -49,7 +49,7 @@ export default function ChecksPage() {
         actions={
           canEdit && (
             <>
-              <Button variant="outline" onClick={scan}>
+              <Button variant="outline" onClick={() => scan('checks')}>
                 <ScanLine /> Escanear cheque
               </Button>
               <Button onClick={openNew}>

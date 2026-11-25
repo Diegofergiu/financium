@@ -117,7 +117,7 @@ export default function DashboardPage() {
             <Button onClick={() => openTransaction({ type: 'expense' })} className="h-11 bg-white/15 text-white hover:bg-white/25">
               <Minus /> Gasto
             </Button>
-            <Button onClick={scan} className="h-11 bg-[#FFD27A] text-[#0B3B35] hover:bg-[#FFD27A]/90">
+            <Button onClick={() => scan()} className="h-11 bg-[#FFD27A] text-[#0B3B35] hover:bg-[#FFD27A]/90">
               <ScanLine /> Escanear
             </Button>
           </div>

@@ -165,7 +165,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <WalletSwitcher compact className="max-w-[55vw] lg:hidden" />
             <div className="flex-1" />
             {canEdit && (
-              <Button variant="ghost" onClick={scan} className="h-10 gap-2 rounded-full px-3" aria-label="Escanear comprobante con IA">
+              <Button variant="ghost" onClick={() => scan()} className="h-10 gap-2 rounded-full px-3" aria-label="Escanear comprobante con IA">
                 <ScanLine className="!size-5" />
                 <span className="hidden sm:inline">Escanear</span>
               </Button>

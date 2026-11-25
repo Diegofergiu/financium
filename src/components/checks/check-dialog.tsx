@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { collection, doc, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
-import { useFirestore } from '@/firebase';
+import { useFirebaseApp, useFirestore, useUser } from '@/firebase';
+import { aiErrorMessage, scanDocument } from '@/lib/ai';
+import { scanNote } from '@/lib/scan-helpers';
+import { uploadAttachment } from '@/lib/attachments';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -15,7 +18,7 @@ import { deleteWithUndo } from '@/components/shared/undo';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { deleteAttachments } from '@/lib/attachments';
 import { OFFLINE_NOTE, safeWrite } from '@/lib/write';
-import { Loader2, Wand2 } from 'lucide-react';
+import { Camera, Loader2, Wand2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { BANKS } from '@/lib/defaults';
 import { parseAmount, todayISO, amountToInput } from '@/lib/format';
@@ -56,6 +59,10 @@ export function CheckDialog({
   const { activeWallet, authFields, accounts, defaultAccountId, currency } = useWallet();
   const isEdit = !!check;
   const draft = useAttachmentDraft();
+  const app = useFirebaseApp();
+  const { user } = useUser();
+  const [scanning, setScanning] = useState(false);
+  const scanRef = useRef<HTMLInputElement>(null);
   const saved = useRef(false);
   const [accountId, setAccountId] = useState('');
 
@@ -90,6 +97,30 @@ export function CheckDialog({
   const handleOpenChange = (o: boolean) => {
     if (!o && !saved.current) draft.discard();
     onOpenChange(o);
+  };
+
+  /** Completa con IA según lo marcado (A cobrar / A pagar); nunca cambia ese tipo. */
+  const onScan = async (file?: File) => {
+    if (scanRef.current) scanRef.current.value = '';
+    if (!file || !activeWallet || !user) return;
+    setScanning(true);
+    const [att, res] = await Promise.allSettled([
+      uploadAttachment(activeWallet.id, user.uid, file),
+      scanDocument(app, file, { mode: type, categories: [], walletName: activeWallet.name }),
+    ]);
+    setScanning(false);
+    if (att.status === 'fulfilled') draft.add(att.value);
+    if (res.status === 'rejected') {
+      toast({ variant: 'destructive', title: 'No se pudo leer con IA', description: `${aiErrorMessage(res.reason)}${att.status === 'fulfilled' ? ' La foto quedó adjunta.' : ''}` });
+      return;
+    }
+    const r = res.value;
+    if (r.amount) setAmount(amountToInput(r.amount));
+    if (r.counterparty) setParty(r.counterparty);
+    if (r.dueDate || r.date) setDueDate(r.dueDate || r.date);
+    if (r.bank) setBank(r.bank);
+    if (r.checkNumber) setCheckNumber(r.checkNumber);
+    setAiNote(scanNote(r, type));
   };
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -169,6 +200,15 @@ export function CheckDialog({
               { value: 'issued', label: 'A pagar', activeClass: 'text-expense' },
             ]}
           />
+          {!isEdit && (
+            <>
+              <Button type="button" variant="outline" className="h-11 w-full border-dashed" disabled={scanning} onClick={() => scanRef.current?.click()}>
+                {scanning ? <Loader2 className="animate-spin" /> : <Camera />}
+                {scanning ? 'Leyendo el cheque…' : `Completar con foto del cheque (IA)`}
+              </Button>
+              <input ref={scanRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => onScan(e.target.files?.[0])} />
+            </>
+          )}
           <div className="space-y-2">
             <Label htmlFor="ck-amount">Monto</Label>
             <div className="relative">

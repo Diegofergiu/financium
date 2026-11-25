@@ -33,7 +33,7 @@ export function CheckCard({ check, onEdit, compact }: { check: Check; onEdit?: (
   return (
     <div
       className={cn(
-        'flex items-start gap-3 rounded-2xl border bg-card p-3.5 transition-colors sm:p-4',
+        'flex min-w-0 items-start gap-3 rounded-2xl border bg-card p-3.5 transition-colors sm:p-4',
         overdue && 'border-destructive/40 bg-destructive/[0.04]',
         soon && 'border-warning/50 bg-warning/[0.05]',
         !pending && 'opacity-80'
@@ -46,8 +46,8 @@ export function CheckCard({ check, onEdit, compact }: { check: Check; onEdit?: (
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="flex items-center gap-1.5 text-[15px] font-semibold">
-              <span className="truncate">{check.issuerRecipient || 'Sin nombre'}</span>
+            <p className="flex min-w-0 items-center gap-1.5 text-[15px] font-semibold">
+              <span className="min-w-0 truncate">{check.issuerRecipient || 'Sin nombre'}</span>
               <AttachmentBadge count={check.attachments?.length} />
             </p>
             <p className="text-xs text-muted-foreground">{toCollect ? 'A cobrar' : 'A pagar'}{check.checkNumber ? ` · N° ${check.checkNumber}` : ''}</p>

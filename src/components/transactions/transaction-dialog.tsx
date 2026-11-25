@@ -21,6 +21,7 @@ import { guessCategory } from '@/lib/auto-category';
 import { deleteAttachments, uploadAttachment } from '@/lib/attachments';
 import { OFFLINE_NOTE, safeWrite } from '@/lib/write';
 import { aiErrorMessage, scanDocument, suggestCategoryAI, type ScanResult } from '@/lib/ai';
+import { scanNote } from '@/lib/scan-helpers';
 import { useFirebaseApp } from '@/firebase';
 import type { Attachment, Transaction, TransactionType } from '@/types';
 
@@ -164,26 +165,19 @@ function TransactionDialog({ open, onOpenChange, type: initialType, transaction,
       /* el adjunto es opcional */
     }
     try {
-      const r: ScanResult = await scanDocument(app, file, { categories: categories.map((c) => c.name), walletName: activeWallet.name });
-      if (r.kind === 'check') {
-        // Es un cheque: se pasa al formulario de cheques
-        window.dispatchEvent(new CustomEvent('mibolsillo:scanned-check', { detail: { result: r, attachment } }));
-        saved.current = true;
-        draft.discard();
-        onOpenChange(false);
-        return;
-      }
+      // Gasto o ingreso lo decide la persona (lo que esté marcado arriba); la IA sólo lee los datos
+      const mode = type === 'income' ? 'income' : 'expense';
+      const r: ScanResult = await scanDocument(app, file, { mode, categories: categories.map((c) => c.name), walletName: activeWallet.name });
       if (attachment) draft.add(attachment);
-      if (r.direction === 'income' || r.direction === 'expense') setType(r.direction);
       if (r.amount) setAmount(amountToInput(r.amount));
-      if (r.date) setDate(r.date);
-      if (r.description || r.counterparty) setDescription(r.description || r.counterparty);
+      if (r.date && r.date <= todayISO()) setDate(r.date);
+      if (r.description || r.counterparty) setDescription((r.description || r.counterparty).slice(0, 80));
       const cat = categories.find((c) => c.name === r.category);
       if (cat) {
         setCategoryId(cat.id);
         setTouchedCategory(true);
       }
-      setAiNote(r.notes || 'Completado con IA: revisá los datos antes de guardar.');
+      setAiNote(scanNote(r, mode));
     } catch (e) {
       if (attachment) draft.add(attachment);
       toast({ variant: 'destructive', title: 'No se pudo leer con IA', description: `${aiErrorMessage(e)}${attachment ? ' La foto quedó adjunta.' : ''}` });
@@ -276,7 +270,7 @@ function TransactionDialog({ open, onOpenChange, type: initialType, transaction,
             <div className="flex items-start gap-2 rounded-xl border border-primary/30 bg-secondary/60 p-3 text-sm">
               <Wand2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
               <span>
-                <strong>Completado con IA.</strong> {aiNote === 'Completado con IA: revisá los datos antes de guardar.' ? 'Revisá los datos antes de guardar.' : aiNote}
+                <strong>Completado con IA.</strong> {aiNote}
               </span>
             </div>
           )}

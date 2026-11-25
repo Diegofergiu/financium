@@ -81,7 +81,8 @@ exports.enviarPruebaPush = onCall({ cors: true }, async (request) => {
 /** Lee una foto de factura, ticket o cheque y devuelve los datos para cargarla. */
 exports.leerComprobante = onCall({ secrets: [GEMINI_API_KEY], memory: '512MiB', timeoutSeconds: 60, cors: true }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Tenés que iniciar sesión.');
-  const { imageBase64, mimeType, categories, walletName } = request.data || {};
+  const { imageBase64, mimeType, categories, walletName, mode } = request.data || {};
+  if (!ai.MODES.includes(mode)) throw new HttpsError('invalid-argument', 'Indicá si es gasto, ingreso o cheque.');
   if (typeof imageBase64 !== 'string' || !/^image\/(jpeg|png|webp|heic|heif)$/.test(String(mimeType))) {
     throw new HttpsError('invalid-argument', 'Mandá una foto (JPG, PNG o WebP).');
   }
@@ -94,7 +95,7 @@ exports.leerComprobante = onCall({ secrets: [GEMINI_API_KEY], memory: '512MiB', 
       imageBase64,
       mimeType,
       context: {
-        userName: request.auth.token.name || '',
+        mode,
         walletName: String(walletName || '').slice(0, 80),
         categories: Array.isArray(categories) ? categories.map(String).slice(0, 60) : [],
         today: localISO(),

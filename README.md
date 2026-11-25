@@ -83,8 +83,10 @@ npm run test:functions   # lógica de avisos, gastos fijos y resumen semanal
 
 ### 3. Escanear con IA (opcional)
 
-El botón **Escanear** lee fotos de facturas, tickets, boletas y cheques con Gemini (función `leerComprobante`):
-detecta si es gasto, ingreso o cheque a cobrar/pagar y abre el formulario con los datos y la foto adjunta.
+El botón **Escanear** lee fotos de facturas, tickets, boletas y cheques con Gemini (función `leerComprobante`).
+Primero la persona elige qué es (gasto, ingreso, cheque a cobrar o a pagar) y la IA **sólo extrae los datos**
+(importe, fechas, emisor, categoría, número y banco); nunca cambia lo elegido, sólo avisa si la foto parece otra cosa.
+Se abre el formulario con los datos y la foto adjunta para revisar y guardar.
 Sólo responde a usuarios con sesión y tiene un límite de 60 lecturas por persona por día.
 
 1. Crear una clave en [Google AI Studio](https://aistudio.google.com/apikey).

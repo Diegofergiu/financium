@@ -5,7 +5,10 @@ import { httpsCallable } from 'firebase/functions';
 import { getAppFunctions } from '@/firebase';
 import { blobToDataUri, compressImage } from './attachments';
 
+export type ScanMode = 'expense' | 'income' | 'toCollect' | 'issued';
+
 export interface ScanResult {
+  mode?: ScanMode;
   kind: 'invoice' | 'receipt' | 'check' | 'transfer' | 'other';
   direction: 'expense' | 'income' | 'unknown';
   checkType: 'toCollect' | 'issued' | 'unknown';
@@ -24,12 +27,12 @@ export interface ScanResult {
 }
 
 /** Lee una foto de factura, ticket o cheque con IA (Cloud Function leerComprobante). */
-export async function scanDocument(app: FirebaseApp, file: File, opts: { categories: string[]; walletName: string }): Promise<ScanResult> {
+export async function scanDocument(app: FirebaseApp, file: File, opts: { mode: ScanMode; categories: string[]; walletName: string }): Promise<ScanResult> {
   const small = await compressImage(file, 1600, 0.85);
   const dataUri = await blobToDataUri(small);
   const [, mimeType = 'image/jpeg', imageBase64 = ''] = dataUri.match(/^data:([^;]+);base64,(.*)$/) ?? [];
   const fn = httpsCallable<unknown, ScanResult>(getAppFunctions(app), 'leerComprobante', { timeout: 70000 });
-  const res = await fn({ imageBase64, mimeType, categories: opts.categories, walletName: opts.walletName });
+  const res = await fn({ imageBase64, mimeType, mode: opts.mode, categories: opts.categories, walletName: opts.walletName });
   return res.data;
 }
 
