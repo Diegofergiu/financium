@@ -13,7 +13,7 @@ import { CategoryDot } from '@/components/shared/ui-bits';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { safeWrite } from '@/lib/write';
-import { parseAmount } from '@/lib/format';
+import { parseAmount, amountToInput } from '@/lib/format';
 import type { Budget } from '@/types';
 
 export function BudgetDialog({ open, onOpenChange, budget }: { open: boolean; onOpenChange: (o: boolean) => void; budget?: Budget | null }) {
@@ -33,7 +33,7 @@ export function BudgetDialog({ open, onOpenChange, budget }: { open: boolean; on
     if (!open) return;
     setCategoryId(budget?.categoryId ?? '');
     setName(budget?.name ?? '');
-    setLimit(budget ? String(budget.limitAmount).replace('.', ',') : '');
+    setLimit(budget ? amountToInput(budget.limitAmount) : '');
   }, [open, budget]);
 
   const onSubmit = async (e: React.FormEvent) => {

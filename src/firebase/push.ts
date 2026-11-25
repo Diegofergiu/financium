@@ -3,7 +3,8 @@
 import type { FirebaseApp } from 'firebase/app';
 import { deleteField, doc, FieldPath, serverTimestamp, setDoc, updateDoc, type Firestore } from 'firebase/firestore';
 import { deleteToken, getMessaging, getToken, isSupported } from 'firebase/messaging';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { httpsCallable } from 'firebase/functions';
+import { getAppFunctions } from '@/firebase';
 
 const TOKEN_KEY = 'mibolsillo:fcm-token';
 
@@ -67,7 +68,7 @@ export function hasLocalPushToken() {
 
 /** Pide al servidor que mande una notificación de prueba a todos los dispositivos del usuario. */
 export async function sendServerTestPush(app: FirebaseApp) {
-  const fn = httpsCallable<unknown, { sent: number; devices: number }>(getFunctions(app, 'us-central1'), 'enviarPruebaPush');
+  const fn = httpsCallable<unknown, { sent: number; devices: number }>(getAppFunctions(app), 'enviarPruebaPush');
   const res = await fn({});
   return res.data;
 }

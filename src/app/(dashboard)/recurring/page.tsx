@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { formatDate, formatMoney, parseAmount } from '@/lib/format';
+import { formatDate, formatMoney, parseAmount, amountToInput } from '@/lib/format';
 import { recurringDate } from '@/lib/recurring';
 import { guessCategory } from '@/lib/auto-category';
 import { useMarkRecurringPaid } from '@/components/recurring/use-mark-paid';
@@ -42,7 +42,7 @@ function RecurringDialog({ open, onOpenChange, item }: { open: boolean; onOpenCh
     if (!open) return;
     setType(item?.type ?? 'expense');
     setDescription(item?.description ?? '');
-    setAmount(item ? String(item.amount).replace('.', ',') : '');
+    setAmount(item ? amountToInput(item.amount) : '');
     setCategoryId(item?.categoryId ?? '');
     setAccountId(item?.accountId || defaultAccountId || '');
     setDay(String(item?.dayOfMonth ?? 10));

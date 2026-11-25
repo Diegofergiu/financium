@@ -81,11 +81,22 @@ npm run test:rules       # reglas de Firestore y Storage
 npm run test:functions   # lógica de avisos, gastos fijos y resumen semanal
 ```
 
-### 3. IA (opcional)
+### 3. Escanear con IA (opcional)
 
-La sugerencia de categoría funciona sin IA con reglas por palabras clave. Para la sugerencia con IA y la lectura de
-tickets por foto, crear una clave en [Google AI Studio](https://aistudio.google.com/apikey) y definirla como
-`GEMINI_API_KEY` (en `.env.local` para desarrollo, o como secreto en `apphosting.yaml` en producción).
+El botón **Escanear** lee fotos de facturas, tickets, boletas y cheques con Gemini (función `leerComprobante`):
+detecta si es gasto, ingreso o cheque a cobrar/pagar y abre el formulario con los datos y la foto adjunta.
+Sólo responde a usuarios con sesión y tiene un límite de 60 lecturas por persona por día.
+
+1. Crear una clave en [Google AI Studio](https://aistudio.google.com/apikey).
+2. Guardarla como secreto y publicar las funciones (Cloud Shell, dentro de la carpeta del proyecto):
+
+   ```bash
+   npx firebase-tools functions:secrets:set GEMINI_API_KEY --project mi-bolsillo-2-22650111-8373c
+   npx firebase-tools deploy --only functions --project mi-bolsillo-2-22650111-8373c
+   ```
+
+Sin la clave la app funciona igual: la categoría se sugiere con reglas y las fotos se adjuntan sin leerse.
+Opcional: variable `GEMINI_MODEL` para cambiar el modelo (por defecto `gemini-3.8-flash`).
 
 ### 4. Desarrollo
 
@@ -94,10 +105,11 @@ npm install
 npm run dev            # http://localhost:9002 (usa el Firebase real)
 ```
 
-Para probar sin tocar datos reales, con los emuladores de Firebase (necesita Java):
+Para probar sin tocar datos reales, con los emuladores de Firebase (necesita Java).
+Con `AI_FAKE=1` en `functions/.env.local` la lectura con IA devuelve datos de ejemplo:
 
 ```bash
-npx firebase-tools emulators:start --only auth,firestore
+npx firebase-tools emulators:start --only auth,firestore,storage,functions
 NEXT_PUBLIC_USE_EMULATORS=true npm run dev
 ```
 

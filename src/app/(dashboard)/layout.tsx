@@ -7,6 +7,7 @@ import { signOut } from 'firebase/auth';
 import { WalletProvider, useWallet } from '@/components/providers/wallet-provider';
 import { NotificationsProvider } from '@/components/providers/notifications-provider';
 import { TransactionDialogProvider } from '@/components/transactions/transaction-dialog';
+import { ScanProvider } from '@/components/scan/scan-provider';
 import { AppShell } from '@/components/layout/app-shell';
 import { SplashScreen } from '@/components/brand/splash';
 import { LogoMark } from '@/components/brand/logo';
@@ -55,7 +56,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <Gate>
         <NotificationsProvider>
           <TransactionDialogProvider>
-            <AppShell>{children}</AppShell>
+            <ScanProvider>
+              <AppShell>{children}</AppShell>
+            </ScanProvider>
           </TransactionDialogProvider>
         </NotificationsProvider>
       </Gate>

@@ -45,3 +45,4 @@ firebase-debug.log
 firestore-debug.log.firebase/
 *-debug.log
 functions/node_modules/
+functions/.secret.local

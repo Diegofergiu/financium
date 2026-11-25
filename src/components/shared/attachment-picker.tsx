@@ -18,10 +18,11 @@ export function useAttachmentDraft() {
   const original = useRef<Attachment[]>([]);
   const added = useRef<Set<string>>(new Set());
 
-  const reset = useCallback((initial: Attachment[] = []) => {
+  /** `fresh`: adjuntos recién subidos (p. ej. al escanear) que se borran si se cancela. */
+  const reset = useCallback((initial: Attachment[] = [], fresh: Attachment[] = []) => {
     original.current = initial;
-    added.current = new Set();
-    setItems(initial);
+    added.current = new Set(fresh.map((a) => a.path));
+    setItems([...initial, ...fresh]);
   }, []);
 
   const add = useCallback((a: Attachment) => {

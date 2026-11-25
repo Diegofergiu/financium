@@ -15,17 +15,42 @@ import { deleteWithUndo } from '@/components/shared/undo';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { deleteAttachments } from '@/lib/attachments';
 import { OFFLINE_NOTE, safeWrite } from '@/lib/write';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Wand2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { BANKS } from '@/lib/defaults';
-import { parseAmount, todayISO } from '@/lib/format';
+import { parseAmount, todayISO, amountToInput } from '@/lib/format';
 import type { Check, CheckStatus, CheckType } from '@/types';
 import { Switch } from '@/components/ui/switch';
 import { DayChips } from '@/components/settings/check-reminders-editor';
 import { useNotifications } from '@/components/providers/notifications-provider';
 import { describeRule, ruleForCheck } from '@/lib/check-reminders';
 
-export function CheckDialog({ open, onOpenChange, check, defaultType = 'toCollect' }: { open: boolean; onOpenChange: (o: boolean) => void; check?: Check | null; defaultType?: CheckType }) {
+export interface CheckPrefill {
+  type?: CheckType;
+  amount?: number;
+  party?: string;
+  dueDate?: string;
+  bank?: string;
+  checkNumber?: string;
+  notes?: string;
+  attachments?: import('@/types').Attachment[];
+  aiNote?: string;
+}
+
+export function CheckDialog({
+  open,
+  onOpenChange,
+  check,
+  defaultType = 'toCollect',
+  prefill,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  check?: Check | null;
+  defaultType?: CheckType;
+  prefill?: CheckPrefill | null;
+}) {
+  const [aiNote, setAiNote] = useState<string | null>(null);
   const db = useFirestore();
   const { toast } = useToast();
   const { activeWallet, authFields, accounts, defaultAccountId, currency } = useWallet();
@@ -47,19 +72,20 @@ export function CheckDialog({ open, onOpenChange, check, defaultType = 'toCollec
 
   useEffect(() => {
     if (!open) return;
-    setType(check?.type ?? defaultType);
-    setCheckNumber(check?.checkNumber ?? '');
-    setBank(check?.bank ?? '');
-    setParty(check?.issuerRecipient ?? '');
-    setDueDate(check?.dueDate ?? todayISO());
-    setAmount(check ? String(check.amount).replace('.', ',') : '');
-    setNotes(check?.notes ?? '');
+    setType(check?.type ?? prefill?.type ?? defaultType);
+    setCheckNumber(check?.checkNumber ?? prefill?.checkNumber ?? '');
+    setBank(check?.bank ?? prefill?.bank ?? '');
+    setParty(check?.issuerRecipient ?? prefill?.party ?? '');
+    setDueDate(check?.dueDate ?? prefill?.dueDate ?? todayISO());
+    setAmount(check ? amountToInput(check.amount) : prefill?.amount ? amountToInput(prefill.amount) : '');
+    setNotes(check?.notes ?? prefill?.notes ?? '');
+    setAiNote(prefill?.aiNote ?? null);
     setCustomReminders(Array.isArray(check?.reminderDays) ? check!.reminderDays! : null);
     setAccountId(check?.accountId || defaultAccountId || '');
     saved.current = false;
-    draft.reset(check?.attachments ?? []);
+    draft.reset(check?.attachments ?? [], prefill?.attachments ?? []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, check, defaultType]);
+  }, [open, check, defaultType, prefill]);
 
   const handleOpenChange = (o: boolean) => {
     if (!o && !saved.current) draft.discard();
@@ -127,6 +153,14 @@ export function CheckDialog({ open, onOpenChange, check, defaultType = 'toCollec
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
+          {aiNote && (
+            <div className="flex items-start gap-2 rounded-xl border border-primary/30 bg-secondary/60 p-3 text-sm">
+              <Wand2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <span>
+                <strong>Completado con IA.</strong> {aiNote}
+              </span>
+            </div>
+          )}
           <Segmented
             value={type}
             onChange={setType}

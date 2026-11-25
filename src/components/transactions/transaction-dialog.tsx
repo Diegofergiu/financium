@@ -13,20 +13,33 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { CategoryDot, Segmented } from '@/components/shared/ui-bits';
 import { AttachmentPicker, useAttachmentDraft } from '@/components/shared/attachment-picker';
 import { deleteWithUndo } from '@/components/shared/undo';
-import { ArrowRight, Camera, Loader2, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowRight, Camera, Loader2, Sparkles, Trash2, Wand2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { PAYMENT_METHODS } from '@/lib/defaults';
-import { parseAmount, todayISO, formatMoney } from '@/lib/format';
+import { parseAmount, todayISO, formatMoney, amountToInput } from '@/lib/format';
 import { guessCategory } from '@/lib/auto-category';
-import { blobToDataUri, compressImage, deleteAttachments, uploadAttachment } from '@/lib/attachments';
+import { deleteAttachments, uploadAttachment } from '@/lib/attachments';
 import { OFFLINE_NOTE, safeWrite } from '@/lib/write';
-import { suggestTransactionCategory } from '@/ai/flows/suggest-transaction-category';
-import { extractReceiptData } from '@/ai/flows/extract-receipt-data';
-import type { Transaction, TransactionType } from '@/types';
+import { aiErrorMessage, scanDocument, suggestCategoryAI, type ScanResult } from '@/lib/ai';
+import { useFirebaseApp } from '@/firebase';
+import type { Attachment, Transaction, TransactionType } from '@/types';
+
+export interface TxPrefill {
+  type?: 'income' | 'expense';
+  amount?: number;
+  description?: string;
+  categoryId?: string;
+  date?: string;
+  notes?: string;
+  attachments?: Attachment[];
+  /** Si viene de la IA: texto a mostrar para que la persona revise. */
+  aiNote?: string;
+}
 
 interface OpenOptions {
   type?: TransactionType;
   transaction?: Transaction;
+  prefill?: TxPrefill;
 }
 
 const Ctx = createContext<{ openTransaction: (opts?: OpenOptions) => void }>({ openTransaction: () => {} });
@@ -45,7 +58,9 @@ export function TransactionDialogProvider({ children }: { children: ReactNode })
 
 const amountClean = (v: string) => v.replace(/[^\d.,]/g, '');
 
-function TransactionDialog({ open, onOpenChange, type: initialType, transaction }: OpenOptions & { open: boolean; onOpenChange: (o: boolean) => void }) {
+function TransactionDialog({ open, onOpenChange, type: initialType, transaction, prefill }: OpenOptions & { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const app = useFirebaseApp();
+  const [aiNote, setAiNote] = useState<string | null>(null);
   const db = useFirestore();
   const { user } = useUser();
   const { toast } = useToast();
@@ -80,20 +95,21 @@ function TransactionDialog({ open, onOpenChange, type: initialType, transaction 
   useEffect(() => {
     if (!open) return;
     saved.current = false;
-    setType(transaction?.type ?? initialType ?? 'expense');
-    setAmount(transaction ? String(transaction.amount).replace('.', ',') : '');
-    setToAmount(transaction?.toAmount ? String(transaction.toAmount).replace('.', ',') : '');
-    setDescription(transaction?.description ?? '');
-    setCategoryId(transaction?.categoryId ?? '');
+    setType(transaction?.type ?? prefill?.type ?? initialType ?? 'expense');
+    setAmount(transaction ? amountToInput(transaction.amount) : prefill?.amount ? amountToInput(prefill.amount) : '');
+    setToAmount(transaction?.toAmount ? amountToInput(transaction.toAmount) : '');
+    setDescription(transaction?.description ?? prefill?.description ?? '');
+    setCategoryId(transaction?.categoryId ?? prefill?.categoryId ?? '');
     setAccountId(transaction?.accountId || defaultAccountId || '');
     setToAccountId(transaction?.toAccountId ?? '');
-    setDate(transaction?.date ?? todayISO());
+    setDate(transaction?.date ?? prefill?.date ?? todayISO());
     setPaymentMethod(transaction?.paymentMethod ?? 'Efectivo');
-    setNotes(transaction?.notes ?? '');
-    setTouchedCategory(!!transaction);
-    draft.reset(transaction?.attachments ?? []);
+    setNotes(transaction?.notes ?? prefill?.notes ?? '');
+    setTouchedCategory(!!transaction || !!prefill?.categoryId);
+    setAiNote(prefill?.aiNote ?? null);
+    draft.reset(transaction?.attachments ?? [], prefill?.attachments ?? []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, transaction, initialType]);
+  }, [open, transaction, initialType, prefill]);
 
   const handleOpenChange = (o: boolean) => {
     if (!o && !saved.current) draft.discard();
@@ -122,40 +138,55 @@ function TransactionDialog({ open, onOpenChange, type: initialType, transaction 
     try {
       let found = guessCategory(description, visibleCategories);
       if (!found && visibleCategories.length) {
-        const result = await suggestTransactionCategory({ transactionDescription: description, availableCategories: visibleCategories.map((c) => c.name) });
-        found = visibleCategories.find((c) => c.name.toLowerCase() === result?.suggestedCategory?.toLowerCase()) ?? null;
+        const name = await suggestCategoryAI(app, description, visibleCategories.map((c) => c.name));
+        found = visibleCategories.find((c) => c.name.toLowerCase() === name.toLowerCase()) ?? null;
       }
       if (found) {
         setCategoryId(found.id);
         setTouchedCategory(true);
         toast({ title: `Categoría sugerida: ${found.name}` });
       } else toast({ title: 'No encontramos una categoría clara', description: 'Elegila de la lista.' });
-    } catch {
-      toast({ title: 'La sugerencia con IA no está disponible', description: 'Elegí la categoría de la lista.' });
+    } catch (e) {
+      toast({ title: 'La sugerencia con IA no está disponible', description: aiErrorMessage(e) });
     } finally {
       setSuggesting(false);
     }
   };
 
-  /** Lee el ticket con IA y además lo deja adjunto. */
+  /** Lee el comprobante con IA, completa el formulario y deja la foto adjunta. */
   const onScan = async (file?: File) => {
     if (!file || !activeWallet || !user) return;
     setScanning(true);
+    let attachment: Attachment | null = null;
     try {
-      if (navigator.onLine) draft.add(await uploadAttachment(activeWallet.id, user.uid, file));
+      if (navigator.onLine) attachment = await uploadAttachment(activeWallet.id, user.uid, file);
     } catch {
       /* el adjunto es opcional */
     }
     try {
-      const small = await compressImage(file, 1280, 0.8);
-      const r = await extractReceiptData({ imageDataUri: await blobToDataUri(small) });
-      if (r.amount) setAmount(String(r.amount).replace('.', ','));
-      if (r.date && /^\d{4}-\d{2}-\d{2}$/.test(r.date)) setDate(r.date);
-      const desc = [r.vendorOrPayer, r.description].filter(Boolean).join(' – ');
-      if (desc) setDescription(desc);
-      toast({ title: 'Comprobante leído y adjuntado', description: 'Revisá los datos antes de guardar.' });
-    } catch {
-      toast({ title: 'Foto adjuntada', description: 'No se pudieron leer los datos automáticamente (requiere GEMINI_API_KEY). Completalos a mano.' });
+      const r: ScanResult = await scanDocument(app, file, { categories: categories.map((c) => c.name), walletName: activeWallet.name });
+      if (r.kind === 'check') {
+        // Es un cheque: se pasa al formulario de cheques
+        window.dispatchEvent(new CustomEvent('mibolsillo:scanned-check', { detail: { result: r, attachment } }));
+        saved.current = true;
+        draft.discard();
+        onOpenChange(false);
+        return;
+      }
+      if (attachment) draft.add(attachment);
+      if (r.direction === 'income' || r.direction === 'expense') setType(r.direction);
+      if (r.amount) setAmount(amountToInput(r.amount));
+      if (r.date) setDate(r.date);
+      if (r.description || r.counterparty) setDescription(r.description || r.counterparty);
+      const cat = categories.find((c) => c.name === r.category);
+      if (cat) {
+        setCategoryId(cat.id);
+        setTouchedCategory(true);
+      }
+      setAiNote(r.notes || 'Completado con IA: revisá los datos antes de guardar.');
+    } catch (e) {
+      if (attachment) draft.add(attachment);
+      toast({ variant: 'destructive', title: 'No se pudo leer con IA', description: `${aiErrorMessage(e)}${attachment ? ' La foto quedó adjunta.' : ''}` });
     } finally {
       setScanning(false);
       if (scanRef.current) scanRef.current.value = '';
@@ -241,6 +272,14 @@ function TransactionDialog({ open, onOpenChange, type: initialType, transaction 
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="space-y-4">
+          {aiNote && (
+            <div className="flex items-start gap-2 rounded-xl border border-primary/30 bg-secondary/60 p-3 text-sm">
+              <Wand2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <span>
+                <strong>Completado con IA.</strong> {aiNote === 'Completado con IA: revisá los datos antes de guardar.' ? 'Revisá los datos antes de guardar.' : aiNote}
+              </span>
+            </div>
+          )}
           <fieldset disabled={readOnly} className="space-y-4">
             <Segmented
               value={type}
@@ -335,7 +374,7 @@ function TransactionDialog({ open, onOpenChange, type: initialType, transaction 
                     {!isEdit && !readOnly && (
                       <button type="button" onClick={() => scanRef.current?.click()} disabled={scanning} className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline disabled:opacity-50">
                         {scanning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
-                        Leer ticket con foto
+                        {scanning ? 'Leyendo…' : 'Completar con foto (IA)'}
                       </button>
                     )}
                     <input ref={scanRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => onScan(e.target.files?.[0])} />

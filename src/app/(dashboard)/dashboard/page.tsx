@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ArrowDownLeft, ArrowUpRight, ChevronRight, Ticket, Target, Wallet, Plus, Minus, AlertTriangle } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, ChevronRight, Ticket, Target, Wallet, Plus, Minus, AlertTriangle, ScanLine } from 'lucide-react';
 import { useUser } from '@/firebase';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { useNotifications } from '@/components/providers/notifications-provider';
@@ -14,6 +14,7 @@ import { CheckCard } from '@/components/checks/check-card';
 import { CashflowChart } from '@/components/dashboard/cashflow-chart';
 import { CategoryBreakdown } from '@/components/dashboard/category-breakdown';
 import { InvitesBanner, PendingRecurringCard } from '@/components/dashboard/extras';
+import { useScan } from '@/components/scan/scan-provider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/shared/ui-bits';
@@ -35,6 +36,7 @@ export default function DashboardPage() {
   const { transactions: allTransactions, bookTransactions: transactions, checks, budgets, categories, currency, activeWallet, isDataLoading, accounts, balances, canEdit } = useWallet();
   const { alerts } = useNotifications();
   const { openTransaction } = useTransactionDialog();
+  const { scan } = useScan();
 
   const stats = useMemo(() => {
     const month = format(new Date(), 'yyyy-MM');
@@ -108,12 +110,15 @@ export default function DashboardPage() {
             </p>
             <p className="tabular mt-1 font-headline text-4xl font-extrabold tracking-tight sm:text-5xl">{formatMoney(stats.balance, currency)}</p>
           </div>
-          <div className={cn('grid grid-cols-2 gap-2 sm:flex', !canEdit && 'hidden')}>
+          <div className={cn('grid grid-cols-3 gap-2 sm:flex', !canEdit && 'hidden')}>
             <Button onClick={() => openTransaction({ type: 'income' })} className="h-11 bg-white text-[#0B3B35] hover:bg-white/90">
               <Plus /> Ingreso
             </Button>
             <Button onClick={() => openTransaction({ type: 'expense' })} className="h-11 bg-white/15 text-white hover:bg-white/25">
               <Minus /> Gasto
+            </Button>
+            <Button onClick={scan} className="h-11 bg-[#FFD27A] text-[#0B3B35] hover:bg-[#FFD27A]/90">
+              <ScanLine /> Escanear
             </Button>
           </div>
         </div>

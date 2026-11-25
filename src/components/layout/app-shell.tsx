@@ -4,9 +4,10 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { signOut } from 'firebase/auth';
-import { LayoutDashboard, ArrowLeftRight, Ticket, Target, Settings, LogOut, Plus, Moon, Sun, Monitor, WifiOff, Wallet, Repeat, BarChart3, Menu, Eye } from 'lucide-react';
+import { LayoutDashboard, ArrowLeftRight, Ticket, Target, Settings, LogOut, Plus, Moon, Sun, Monitor, WifiOff, Wallet, Repeat, BarChart3, Menu, Eye, ScanLine } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useWallet } from '@/components/providers/wallet-provider';
+import { useScan } from '@/components/scan/scan-provider';
 import { useAuth, useUser } from '@/firebase';
 import { Logo, LogoMark } from '@/components/brand/logo';
 import { WalletSwitcher } from './wallet-switcher';
@@ -109,6 +110,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const online = useOnline();
   const [moreOpen, setMoreOpen] = useState(false);
   const { canEdit } = useWallet();
+  const { scan } = useScan();
   const pathname = usePathname();
   const { openTransaction } = useTransactionDialog();
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/');
@@ -162,6 +164,12 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Link>
             <WalletSwitcher compact className="max-w-[55vw] lg:hidden" />
             <div className="flex-1" />
+            {canEdit && (
+              <Button variant="ghost" onClick={scan} className="h-10 gap-2 rounded-full px-3" aria-label="Escanear comprobante con IA">
+                <ScanLine className="!size-5" />
+                <span className="hidden sm:inline">Escanear</span>
+              </Button>
+            )}
             <NotificationBell />
             <UserMenu />
           </div>

@@ -12,6 +12,7 @@ import {
   Firestore,
 } from 'firebase/firestore';
 import { getStorage, connectStorageEmulator, FirebaseStorage } from 'firebase/storage';
+import { getFunctions, connectFunctionsEmulator, type Functions } from 'firebase/functions';
 
 const USE_EMULATORS = process.env.NEXT_PUBLIC_USE_EMULATORS === 'true';
 let emulatorsConnected = false;
@@ -74,6 +75,16 @@ export function getSdks(firebaseApp: FirebaseApp) {
   maybeConnectEmulators(auth, firestore, storage);
   cached = { firebaseApp, auth, firestore, storage };
   return cached;
+}
+
+let functionsInstance: Functions | null = null;
+/** Cloud Functions (región us-central1), conectado al emulador en desarrollo. */
+export function getAppFunctions(app: FirebaseApp) {
+  if (!functionsInstance) {
+    functionsInstance = getFunctions(app, 'us-central1');
+    if (USE_EMULATORS) connectFunctionsEmulator(functionsInstance, '127.0.0.1', 5001);
+  }
+  return functionsInstance;
 }
 
 export function getFirebaseStorage() {

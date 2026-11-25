@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Plus, Ticket } from 'lucide-react';
+import { Plus, ScanLine, Ticket } from 'lucide-react';
+import { useScan } from '@/components/scan/scan-provider';
 import { useWallet } from '@/components/providers/wallet-provider';
 import { CheckDialog } from '@/components/checks/check-dialog';
 import { CheckCard } from '@/components/checks/check-card';
@@ -15,7 +16,8 @@ type Tab = 'all' | CheckType;
 type StatusFilter = 'pending' | 'done';
 
 export default function ChecksPage() {
-  const { checks, currency, isDataLoading } = useWallet();
+  const { checks, currency, isDataLoading, canEdit } = useWallet();
+  const { scan } = useScan();
   const [tab, setTab] = useState<Tab>('all');
   const [status, setStatus] = useState<StatusFilter>('pending');
   const [dialog, setDialog] = useState<{ open: boolean; check: Check | null }>({ open: false, check: null });
@@ -45,9 +47,16 @@ export default function ChecksPage() {
         title="Cheques"
         description="Los que tenés que cobrar y los que tenés que pagar, con aviso antes del vencimiento."
         actions={
-          <Button onClick={openNew}>
-            <Plus /> Nuevo cheque
-          </Button>
+          canEdit && (
+            <>
+              <Button variant="outline" onClick={scan}>
+                <ScanLine /> Escanear cheque
+              </Button>
+              <Button onClick={openNew}>
+                <Plus /> Nuevo cheque
+              </Button>
+            </>
+          )
         }
       />
 

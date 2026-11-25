@@ -96,3 +96,10 @@ export function parseAmount(input: string): number {
   }
   return Number(normalized);
 }
+
+/** Número a texto para un campo de monto: 47850.5 -> "47.850,50" (12000 -> "12.000"). */
+export function amountToInput(n: number | undefined | null): string {
+  if (!n || !Number.isFinite(n)) return '';
+  const hasCents = Math.round(n * 100) % 100 !== 0;
+  return n.toLocaleString('es-AR', { minimumFractionDigits: hasCents ? 2 : 0, maximumFractionDigits: 2, useGrouping: true });
+}
