@@ -1,7 +1,7 @@
 /**
  * Cloud Functions de Mi Bolsillo.
  *
- * - avisosDiarios: todos los días a las 9:00 (hora de Argentina) envía notificaciones
+ * - avisosDiarios: corre cada hora; a cada usuario le envía, a la hora que eligió, notificaciones
  *   push de cheques por vencer/vencidos y presupuestos al 80 %/100 %, aunque la app esté cerrada.
  * - resumenSemanal: los lunes 9:30, cuánto entró/salió la semana anterior y cheques de la semana.
  * - enviarPruebaPush: la llama la app desde Ajustes para comprobar que las notificaciones llegan.
@@ -17,8 +17,9 @@ const { runDailyReminders, runWeeklySummary, sendToUser } = require('./reminders
 initializeApp();
 setGlobalOptions({ region: 'us-central1', maxInstances: 2, memory: '256MiB' });
 
+// Corre cada hora: cada usuario recibe sus avisos a la hora que eligió en Ajustes
 exports.avisosDiarios = onSchedule(
-  { schedule: '0 9 * * *', timeZone: 'America/Argentina/Buenos_Aires', retryCount: 1, timeoutSeconds: 300 },
+  { schedule: '0 * * * *', timeZone: 'America/Argentina/Buenos_Aires', retryCount: 1, timeoutSeconds: 300 },
   async () => {
     const summary = await runDailyReminders({ db: getFirestore(), messaging: getMessaging(), FieldValue, FieldPath, log: logger });
     logger.info('Avisos diarios enviados', summary);

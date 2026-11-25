@@ -25,7 +25,7 @@ export async function pushSupported() {
  * Registra este dispositivo en Firebase Cloud Messaging y guarda el token en el perfil,
  * para que la función diaria del servidor pueda enviarle avisos aunque la app esté cerrada.
  */
-export async function registerPush(app: FirebaseApp, db: Firestore, uid: string, notifyDays: number): Promise<string | null> {
+export async function registerPush(app: FirebaseApp, db: Firestore, uid: string): Promise<string | null> {
   if (!(await pushSupported())) return null;
   const registration = await getSwRegistration();
   const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || undefined;
@@ -36,7 +36,6 @@ export async function registerPush(app: FirebaseApp, db: Firestore, uid: string,
     {
       id: uid,
       pushEnabled: true,
-      notifyDays,
       fcmTokens: { [token]: { updatedAt: serverTimestamp(), ua: navigator.userAgent.slice(0, 160) } },
     },
     { merge: true }
@@ -73,6 +72,7 @@ export async function sendServerTestPush(app: FirebaseApp) {
   return res.data;
 }
 
-export async function saveNotifyDays(db: Firestore, uid: string, notifyDays: number) {
-  await setDoc(doc(db, 'users', uid), { id: uid, notifyDays }, { merge: true });
+/** Guarda la configuración de avisos de cheques en el perfil (la usa también el servidor). */
+export async function saveCheckReminders(db: Firestore, uid: string, settings: unknown) {
+  await setDoc(doc(db, 'users', uid), { id: uid, checkReminders: settings }, { merge: true });
 }

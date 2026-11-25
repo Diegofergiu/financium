@@ -102,7 +102,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     () => (user ? query(collection(db, 'wallets'), where(new FieldPath('members', user.uid), 'in', ROLES)) : null),
     [db, user]
   );
-  const { data: walletsRaw, error: walletsError } = useCollection<Omit<Wallet, 'id'>>(walletsQuery);
+  const { data: walletsRaw, error: walletsError } = useCollection<Omit<Wallet, 'id'>>(walletsQuery, { label: 'tus libros' });
 
   const wallets = useMemo(
     () => (walletsRaw ?? []).slice().sort((a, b) => millis(a.createdAt) - millis(b.createdAt)) as Wallet[],
@@ -205,13 +205,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [db, email, user?.emailVerified]
   );
 
-  const cats = useCollection<Omit<Category, 'id'>>(categoriesRef);
-  const txs = useCollection<Omit<Transaction, 'id'>>(transactionsRef);
-  const chks = useCollection<Omit<Check, 'id'>>(checksRef);
-  const bdgs = useCollection<Omit<Budget, 'id'>>(budgetsRef);
-  const accs = useCollection<Omit<Account, 'id'>>(accountsRef);
-  const recs = useCollection<Omit<Recurring, 'id'>>(recurringRef);
-  const invs = useCollection<Omit<Invite, 'id'>>(invitesRef);
+  const cats = useCollection<Omit<Category, 'id'>>(categoriesRef, { label: 'las categorías' });
+  const txs = useCollection<Omit<Transaction, 'id'>>(transactionsRef, { label: 'los movimientos' });
+  const chks = useCollection<Omit<Check, 'id'>>(checksRef, { label: 'los cheques' });
+  const bdgs = useCollection<Omit<Budget, 'id'>>(budgetsRef, { label: 'los presupuestos' });
+  const accs = useCollection<Omit<Account, 'id'>>(accountsRef, { label: 'las cuentas' });
+  const recs = useCollection<Omit<Recurring, 'id'>>(recurringRef, { label: 'los gastos fijos' });
+  const invs = useCollection<Omit<Invite, 'id'>>(invitesRef, { silent: true, label: 'las invitaciones' });
 
   const currency = activeWallet?.currency || DEFAULT_CURRENCY;
 

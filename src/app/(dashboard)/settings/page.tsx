@@ -4,7 +4,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { signOut, updateProfile, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
-import { Bell, BookOpen, Download, KeyRound, LogOut, Palette, Smartphone, Tags, User, Loader2, Settings, Plus, Users } from 'lucide-react';
+import { Bell, BookOpen, Download, KeyRound, LogOut, Palette, Smartphone, Tags, User, Loader2, Settings, Plus, Users, Ticket } from 'lucide-react';
+import { CheckRemindersEditor } from '@/components/settings/check-reminders-editor';
 import { MembersManager } from '@/components/settings/members-manager';
 import { useAuth, useFirestore, useUser } from '@/firebase';
 import { useWallet } from '@/components/providers/wallet-provider';
@@ -260,21 +261,10 @@ export default function SettingsPage() {
                 />
               </div>
             )}
-            <div className="space-y-2">
-              <Label>Avisarme de cheques con</Label>
-              <Select value={String(notif.notifyDays)} onValueChange={(v) => notif.setNotifyDays(Number(v))}>
-                <SelectTrigger className="h-11">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[1, 3, 5, 7, 15, 30].map((d) => (
-                    <SelectItem key={d} value={String(d)}>
-                      {d === 1 ? '1 día de anticipación' : `${d} días de anticipación`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          </Section>
+
+          <Section icon={Ticket} title="Avisos de cheques" description="Cuántas veces y cuándo querés que te avise antes de cobrar o pagar.">
+            <CheckRemindersEditor />
           </Section>
 
           <Section icon={Palette} title="Apariencia">

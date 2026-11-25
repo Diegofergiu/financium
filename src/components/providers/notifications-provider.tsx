@@ -2,9 +2,11 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useWallet } from './wallet-provider';
-import { useFirebaseApp, useFirestore, useUser } from '@/firebase';
-import { registerPush, unregisterPush, sendServerTestPush, saveNotifyDays, pushSupported } from '@/firebase/push';
-import { computeAlerts, getNotifyDays, NOTIFY_DAYS_KEY, type AppAlert } from '@/lib/alerts';
+import { useDoc, useFirebaseApp, useFirestore, useMemoFirebase, useUser } from '@/firebase';
+import { registerPush, unregisterPush, sendServerTestPush, saveCheckReminders, pushSupported } from '@/firebase/push';
+import { computeAlerts, getNotifyDays, type AppAlert } from '@/lib/alerts';
+import { normalizeCheckReminders, type CheckReminderSettings } from '@/lib/check-reminders';
+import { doc } from 'firebase/firestore';
 
 const SEEN_KEY = 'mibolsillo:seen-alerts';
 const NOTIFIED_KEY = 'mibolsillo:notified-alerts';
@@ -24,8 +26,8 @@ interface NotificationsContextValue {
   disable: () => void;
   sendTest: () => Promise<'server' | 'local' | false>;
   serverPush: ServerPushState;
-  notifyDays: number;
-  setNotifyDays: (d: number) => void;
+  reminders: CheckReminderSettings;
+  setReminders: (r: CheckReminderSettings) => Promise<void>;
 }
 
 const Ctx = createContext<NotificationsContextValue | null>(null);
@@ -80,7 +82,6 @@ async function showSystemNotification(title: string, body: string, url: string, 
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { checks, budgets, bookTransactions: transactions, categories, currency, isDataLoading, recurring } = useWallet();
-  const [notifyDays, setNotifyDaysState] = useState(7);
   const [seen, setSeen] = useState<Set<string>>(new Set());
   const [permission, setPermission] = useState<PermissionState>('default');
   const [enabled, setEnabled] = useState(false);
@@ -89,8 +90,17 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const db = useFirestore();
   const { user } = useUser();
 
+  // Configuración de avisos guardada en el perfil (compartida entre dispositivos y con el servidor)
+  const profileRef = useMemoFirebase(() => (user ? doc(db, 'users', user.uid) : null), [db, user]);
+  const { data: profile } = useDoc<{ checkReminders?: unknown; notifyDays?: number }>(profileRef);
+  const [localReminders, setLocalReminders] = useState<CheckReminderSettings | null>(null);
+  const reminders = useMemo(
+    () => localReminders ?? normalizeCheckReminders(profile?.checkReminders, profile?.notifyDays ?? getNotifyDays()),
+    [localReminders, profile]
+  );
+
   const registerServerPush = useCallback(
-    async (days: number) => {
+    async () => {
       if (!user) return;
       if (!(await pushSupported())) {
         setServerPush('unavailable');
@@ -98,7 +108,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       }
       setServerPush('registering');
       try {
-        const token = await registerPush(app, db, user.uid, days);
+        const token = await registerPush(app, db, user.uid);
         setServerPush(token ? 'active' : 'unavailable');
       } catch (e) {
         console.warn('No se pudo registrar el dispositivo para avisos push', e);
@@ -109,7 +119,6 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    setNotifyDaysState(getNotifyDays());
     setSeen(readSet(SEEN_KEY));
     if (!('Notification' in window)) setPermission('unsupported');
     else setPermission(Notification.permission);
@@ -122,12 +131,12 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
   // Si ya estaban activadas, renovar el registro del dispositivo (los tokens pueden cambiar)
   useEffect(() => {
-    if (enabled && permission === 'granted') registerServerPush(getNotifyDays());
+    if (enabled && permission === 'granted') registerServerPush();
   }, [enabled, permission, registerServerPush]);
 
   const alerts = useMemo(
-    () => (isDataLoading ? [] : computeAlerts({ checks, budgets, transactions, categories, currency, notifyDays, recurring })),
-    [checks, budgets, transactions, categories, currency, notifyDays, isDataLoading, recurring]
+    () => (isDataLoading ? [] : computeAlerts({ checks, budgets, transactions, categories, currency, reminders, recurring })),
+    [checks, budgets, transactions, categories, currency, reminders, isDataLoading, recurring]
   );
 
   const unreadCount = alerts.filter((a) => !seen.has(a.id)).length;
@@ -169,7 +178,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     setPermission(result);
     const ok = result === 'granted';
     setEnabled(ok);
-    if (ok) await registerServerPush(getNotifyDays());
+    if (ok) await registerServerPush();
     try {
       localStorage.setItem(ENABLED_KEY, ok ? '1' : '0');
     } catch {}
@@ -200,17 +209,17 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     return ok ? 'local' : false;
   }, [permission, serverPush, app]);
 
-  const setNotifyDays = useCallback((d: number) => {
-    setNotifyDaysState(d);
-    try {
-      localStorage.setItem(NOTIFY_DAYS_KEY, String(d));
-    } catch {}
-    if (user) saveNotifyDays(db, user.uid, d).catch(() => {});
-  }, [db, user]);
+  const setReminders = useCallback(
+    async (r: CheckReminderSettings) => {
+      setLocalReminders(r);
+      if (user) await saveCheckReminders(db, user.uid, r);
+    },
+    [db, user]
+  );
 
   return (
     <Ctx.Provider
-      value={{ alerts, unreadCount, markAllRead, permission, enabled, enable, disable, sendTest, serverPush, notifyDays, setNotifyDays }}
+      value={{ alerts, unreadCount, markAllRead, permission, enabled, enable, disable, sendTest, serverPush, reminders, setReminders }}
     >
       {children}
     </Ctx.Provider>

@@ -1,5 +1,6 @@
 import type { Budget, Category, Check, Recurring, Transaction } from '@/types';
 import { recurringDate } from './recurring';
+import { checkReminderStage, ruleForCheck, type CheckReminderSettings } from './check-reminders';
 import { daysUntil, formatMoney, relativeDays } from './format';
 import { format } from 'date-fns';
 
@@ -43,20 +44,21 @@ export function computeAlerts(params: {
   transactions: Transaction[];
   categories: Category[];
   currency: string;
-  notifyDays: number;
+  reminders: CheckReminderSettings;
   recurring?: Recurring[];
 }): AppAlert[] {
-  const { checks, budgets, transactions, categories, currency, notifyDays, recurring = [] } = params;
+  const { checks, budgets, transactions, categories, currency, reminders, recurring = [] } = params;
   const alerts: AppAlert[] = [];
 
   for (const c of checks) {
     if (c.status !== 'pending') continue;
     const days = daysUntil(c.dueDate);
-    if (days > notifyDays) continue;
+    const stage = checkReminderStage(days, ruleForCheck(c, reminders));
+    if (!stage) continue;
     const isIssued = c.type === 'issued';
     const verb = isIssued ? 'a pagar' : 'a cobrar';
     alerts.push({
-      id: `check-${c.id}-${c.dueDate}-${days < 0 ? 'overdue' : days === 0 ? 'today' : 'soon'}`,
+      id: `check-${c.id}-${c.dueDate}-${stage}`,
       kind: 'check',
       severity: days < 0 ? 'critical' : days <= 2 ? 'warning' : 'info',
       title: `Cheque ${verb}: ${formatMoney(c.amount, currency)}`,
@@ -89,7 +91,7 @@ export function computeAlerts(params: {
     if (!r.active || r.autoCreate || (r.lastCreatedMonth ?? '') >= month) continue;
     const date = recurringDate(r.dayOfMonth, month);
     const days = daysUntil(date);
-    if (days > Math.min(3, notifyDays)) continue;
+    if (days > 3) continue;
     const verb = r.type === 'income' ? 'Cobrar' : 'Pagar';
     alerts.push({
       id: `recurring-${r.id}-${month}-${days < 0 ? 'overdue' : days === 0 ? 'today' : 'soon'}`,

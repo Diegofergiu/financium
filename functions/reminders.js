@@ -1,3 +1,4 @@
+const { normalizeCheckReminders, ruleForCheck, checkReminderStage } = require('./check-reminders');
 /**
  * Lógica de avisos de Mi Bolsillo (servidor).
  *
@@ -7,7 +8,6 @@
  */
 
 const TZ = 'America/Argentina/Buenos_Aires';
-const DEFAULT_NOTIFY_DAYS = 7;
 const SENT_TTL_DAYS = 60;
 
 /** Fecha YYYY-MM-DD en la zona horaria de Argentina. */
@@ -41,7 +41,7 @@ function relativeDays(days) {
  * Calcula los avisos de un libro.
  * @returns {{id:string,title:string,body:string,url:string,severity:string}[]}
  */
-function computeWalletAlerts({ wallet, checks, budgets, transactions, categories, notifyDays, today, recurring = [] }) {
+function computeWalletAlerts({ wallet, checks, budgets, transactions, categories, reminders, today, recurring = [] }) {
   const currency = wallet.currency || 'ARS';
   const multi = !!wallet.__multi;
   const suffix = multi ? ` · ${wallet.name}` : '';
@@ -50,10 +50,10 @@ function computeWalletAlerts({ wallet, checks, budgets, transactions, categories
   for (const c of checks) {
     if (c.status !== 'pending' || !c.dueDate) continue;
     const days = daysBetween(today, c.dueDate);
-    if (days > notifyDays) continue;
-    const state = days < 0 ? 'overdue' : days === 0 ? 'today' : 'soon';
+    const stage = checkReminderStage(days, ruleForCheck(c, reminders));
+    if (!stage) continue;
     alerts.push({
-      id: `check-${c.id}-${c.dueDate}-${state}`,
+      id: `check-${c.id}-${c.dueDate}-${stage}`,
       severity: days < 0 ? 'critical' : days <= 2 ? 'warning' : 'info',
       title: `Cheque ${c.type === 'issued' ? 'a pagar' : 'a cobrar'}: ${money(c.amount, currency)}`,
       body: `${relativeDays(days)} · ${c.issuerRecipient || 'Sin nombre'}${c.bank ? ` · ${c.bank}` : ''}${suffix}`,
@@ -83,10 +83,21 @@ function computeWalletAlerts({ wallet, checks, budgets, transactions, categories
     });
   }
   for (const r of recurring) {
+    if (r.active && r.autoCreate && r.lastCreatedMonth === month && recurringDate(r.dayOfMonth, month) === today) {
+      alerts.push({
+        id: `recurring-auto-${r.id}-${month}`,
+        severity: 'info',
+        title: `Se anotó solo: ${r.description}`,
+        body: `${r.type === 'income' ? 'Ingreso' : 'Gasto'} de ${money(r.amount, currency)}${suffix}.`,
+        url: '/transactions',
+      });
+    }
+  }
+  for (const r of recurring) {
     if (!r.active || r.autoCreate || (r.lastCreatedMonth || '') >= month) continue;
     const date = recurringDate(r.dayOfMonth, month);
     const days = daysBetween(today, date);
-    if (days > Math.min(3, notifyDays)) continue;
+    if (days > 3) continue;
     alerts.push({
       id: `recurring-${r.id}-${month}-${days < 0 ? 'overdue' : days === 0 ? 'today' : 'soon'}`,
       severity: days < 0 ? 'critical' : days === 0 ? 'warning' : 'info',
@@ -115,7 +126,7 @@ async function userWallets(db, uid) {
   return docs(await db.collection('wallets').where(new FieldPath('members', uid), 'in', ROLES).get());
 }
 
-async function collectUserAlerts(db, uid, notifyDays, today) {
+async function collectUserAlerts(db, uid, reminders, today) {
   const wallets = await userWallets(db, uid);
   const monthStart = `${today.slice(0, 7)}-01`;
   const all = [];
@@ -132,7 +143,7 @@ async function collectUserAlerts(db, uid, notifyDays, today) {
     const transactions = budgets.length
       ? bookOnly(docs(await ref.collection('transactions').where('date', '>=', monthStart).get()), accounts, wallet.currency || 'ARS')
       : [];
-    all.push(...computeWalletAlerts({ wallet, checks, budgets, transactions, categories, notifyDays, today, recurring }));
+    all.push(...computeWalletAlerts({ wallet, checks, budgets, transactions, categories, reminders, today, recurring }));
   }
   const rank = { critical: 0, warning: 1, info: 2 };
   return all.sort((a, b) => rank[a.severity] - rank[b.severity]);
@@ -237,8 +248,18 @@ async function sendToUser(messaging, tokens, messages) {
  * Tarea diaria: revisa a cada usuario con notificaciones activas y le envía
  * sólo los avisos que todavía no recibió.
  */
-async function runDailyReminders({ db, messaging, FieldValue, FieldPath, now = new Date(), log = console }) {
+/** Hora local (0-23) en Argentina. */
+function localHour(date = new Date(), timeZone = TZ) {
+  return Number(new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', hourCycle: 'h23' }).format(date));
+}
+
+/**
+ * Corre cada hora: anota gastos fijos automáticos y, a cada usuario, le envía los avisos
+ * nuevos sólo en la hora que eligió (por defecto 9:00). `ignoreHour` es para pruebas.
+ */
+async function runDailyReminders({ db, messaging, FieldValue, FieldPath, now = new Date(), log = console, ignoreHour = false }) {
   const today = localISO(now);
+  const hour = localHour(now);
   const createdRecurring = await processRecurring({ db, FieldValue, today });
   const users = await db.collection('users').where('pushEnabled', '==', true).get();
   const summary = { users: 0, notified: 0, messages: 0, removedTokens: 0, recurringCreated: createdRecurring.length };
@@ -249,18 +270,10 @@ async function runDailyReminders({ db, messaging, FieldValue, FieldPath, now = n
     const tokens = Object.keys(u.fcmTokens || {});
     if (!tokens.length) continue;
     try {
-      const notifyDays = Number(u.notifyDays) > 0 ? Number(u.notifyDays) : DEFAULT_NOTIFY_DAYS;
+      const reminders = normalizeCheckReminders(u.checkReminders, Number(u.notifyDays) || undefined);
+      if (!ignoreHour && reminders.hour !== hour) continue;
       const sentAlerts = u.sentAlerts || {};
-      const autoNotes = createdRecurring
-        .filter((c) => c.members.includes(userDoc.id))
-        .map((c) => ({
-          id: `recurring-auto-${c.recurring.id}-${today.slice(0, 7)}`,
-          severity: 'info',
-          title: `Se anotó solo: ${c.recurring.description}`,
-          body: `${c.recurring.type === 'income' ? 'Ingreso' : 'Gasto'} de ${money(c.recurring.amount, c.currency)} en “${c.walletName}”.`,
-          url: '/transactions',
-        }));
-      const alerts = [...(await collectUserAlerts(db, userDoc.id, notifyDays, today)), ...autoNotes].filter((a) => !sentAlerts[a.id]);
+      const alerts = (await collectUserAlerts(db, userDoc.id, reminders, today)).filter((a) => !sentAlerts[a.id]);
 
       // Pares [campo, valor]; FieldPath evita problemas con caracteres especiales de los tokens
       const update = [];
@@ -350,6 +363,7 @@ function addDaysISO(iso, n) {
 }
 
 module.exports = {
+  localHour,
   recurringDate,
   processRecurring,
   runWeeklySummary,

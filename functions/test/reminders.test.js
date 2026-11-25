@@ -4,7 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore, FieldValue, FieldPath } = require('firebase-admin/firestore');
-const { runDailyReminders, computeWalletAlerts, localISO, daysBetween } = require('../reminders');
+const { runDailyReminders, computeWalletAlerts, localISO, daysBetween, localHour } = require('../reminders');
+const { normalizeCheckReminders, checkReminderStage, DEFAULT_CHECK_REMINDERS } = require('../check-reminders');
 
 process.env.FIRESTORE_EMULATOR_HOST ||= '127.0.0.1:8080';
 initializeApp({ projectId: 'demo-mibolsillo' });
@@ -55,10 +56,11 @@ test('computeWalletAlerts usa los mismos ids que la app', () => {
       { type: 'expense', date: '2026-10-03', categoryId: 'super', amount: 999 },
     ],
     categories: [{ id: 'super', name: 'Supermercado' }],
-    notifyDays: 7,
+    reminders: DEFAULT_CHECK_REMINDERS,
     today,
   });
-  assert.deepStrictEqual(alerts.map((a) => a.id).sort(), ['budget-b1-2026-11-near', 'check-a-2026-11-26-soon', 'check-b-2026-11-21-overdue']);
+  // a: faltan 2 días -> etapa "3 días antes"; b: a pagar vencido hace 3 días, aviso diario -> overdue-2
+  assert.deepStrictEqual(alerts.map((a) => a.id).sort(), ['budget-b1-2026-11-near', 'check-a-2026-11-26-d3', 'check-b-2026-11-21-overdue-2']);
 });
 
 test('runDailyReminders envía una sola vez y limpia tokens inválidos', async () => {
@@ -77,27 +79,27 @@ test('runDailyReminders envía una sola vez y limpia tokens inválidos', async (
   });
 
   const messaging = fakeMessaging({ invalid: ['tok:viejo-2'] });
-  const s1 = await runDailyReminders({ db, messaging, FieldValue, FieldPath, log: { error() {} } });
+  const s1 = await runDailyReminders({ db, messaging, FieldValue, FieldPath, log: { error() {} }, ignoreHour: true });
   assert.ok(s1.users >= 1);
   const mine = messaging.sent.filter((m) => m.token === 'tok:bueno_1');
   assert.strictEqual(mine.length, 1, 'un aviso (el cheque de 20 días queda fuera de los 3 días)');
   assert.match(mine[0].data.title, /Cheque a cobrar/);
-  assert.strictEqual(mine[0].data.tag, `check-ck1-${addDays(today, 1)}-soon`);
+  assert.strictEqual(mine[0].data.tag, `check-ck1-${addDays(today, 1)}-d1`);
   assert.strictEqual(mine[0].data.url, '/checks');
 
   const u = (await db.collection('users').doc(uid).get()).data();
   assert.deepStrictEqual(Object.keys(u.fcmTokens), ['tok:bueno_1'], 'token inválido eliminado');
-  assert.ok(u.sentAlerts[`check-ck1-${addDays(today, 1)}-soon`], 'aviso marcado como enviado');
+  assert.ok(u.sentAlerts[`check-ck1-${addDays(today, 1)}-d1`], 'aviso marcado como enviado');
   assert.ok(!u.sentAlerts['check-viejo-2020-01-01-soon'], 'avisos viejos limpiados');
 
   const messaging2 = fakeMessaging();
-  await runDailyReminders({ db, messaging: messaging2, FieldValue, FieldPath, log: { error() {} } });
+  await runDailyReminders({ db, messaging: messaging2, FieldValue, FieldPath, log: { error() {} }, ignoreHour: true });
   assert.strictEqual(messaging2.sent.filter((m) => m.token === 'tok:bueno_1').length, 0, 'no repite el mismo aviso');
 
   // Al día siguiente el cheque "vence hoy": es un aviso nuevo
   const tomorrow = new Date(Date.now() + 864e5);
   const messaging3 = fakeMessaging();
-  await runDailyReminders({ db, messaging: messaging3, FieldValue, FieldPath, now: tomorrow, log: { error() {} } });
+  await runDailyReminders({ db, messaging: messaging3, FieldValue, FieldPath, now: tomorrow, log: { error() {} }, ignoreHour: true });
   const m3 = messaging3.sent.filter((m) => m.token === 'tok:bueno_1');
   assert.strictEqual(m3.length, 1);
   assert.match(m3[0].data.body, /Vence hoy/);
@@ -110,7 +112,7 @@ test('usuarios sin pushEnabled no reciben nada', async () => {
   await wallet.collection('checks').doc('c').set({ status: 'pending', type: 'issued', dueDate: localISO(), amount: 10 });
   await db.collection('users').doc(uid).set({ id: uid, pushEnabled: false, fcmTokens: { 'tok:off': {} } });
   const messaging = fakeMessaging();
-  await runDailyReminders({ db, messaging, FieldValue, FieldPath, log: { error() {} } });
+  await runDailyReminders({ db, messaging, FieldValue, FieldPath, log: { error() {} }, ignoreHour: true });
   assert.strictEqual(messaging.sent.filter((m) => m.token === 'tok:off').length, 0);
 });
 
@@ -149,4 +151,46 @@ test('processRecurring anota los gastos fijos automáticos una sola vez', async 
   assert.ok(m, 'envía resumen');
   assert.match(m.data.body, /salieron/);
   assert.ok(!m.data.body.includes('999.999'), 'las transferencias no suman');
+});
+
+test('avisos múltiples: una vez por etapa, repetición si vence y personalizados', () => {
+  const rule = { days: [7, 3, 1, 0], overdueEvery: 3 };
+  const stages = [];
+  for (let d = 10; d >= -10; d--) stages.push(checkReminderStage(d, rule));
+  const distinct = [...new Set(stages.filter(Boolean))];
+  // 4 avisos antes (7, 3, 1 y el día) + vencido: días 1-3, 4-6, 7-9, 10 => 4 etapas más
+  assert.deepStrictEqual(distinct, ['d7', 'd3', 'd1', 'd0', 'overdue-0', 'overdue-1', 'overdue-2', 'overdue-3']);
+  assert.strictEqual(checkReminderStage(8, rule), null);
+  assert.strictEqual(checkReminderStage(-5, { days: [], overdueEvery: -1 }), null);
+  assert.strictEqual(checkReminderStage(-5, { days: [], overdueEvery: 0 }), 'overdue');
+  // Configuración vieja "avisar con 15 días" se traduce a varios avisos
+  assert.deepStrictEqual(normalizeCheckReminders(undefined, 15).toCollect.days, [15, 3, 1, 0]);
+  assert.strictEqual(normalizeCheckReminders({ hour: 20 }).hour, 20);
+  // Cheque con avisos propios
+  const alerts = computeWalletAlerts({
+    wallet: { name: 'Casa' },
+    checks: [{ id: 'p', status: 'pending', type: 'toCollect', dueDate: '2026-12-09', amount: 1, reminderDays: [15] }],
+    budgets: [], transactions: [], categories: [], reminders: DEFAULT_CHECK_REMINDERS, today: '2026-11-24',
+  });
+  assert.deepStrictEqual(alerts.map((a) => a.id), ['check-p-2026-12-09-d15']);
+});
+
+test('cada usuario recibe los avisos a la hora que eligió', async () => {
+  const uid = `h${Date.now()}`;
+  const today = localISO();
+  const wallet = db.collection('wallets').doc();
+  await wallet.set({ name: 'X', ownerId: uid, members: { [uid]: 'owner' } });
+  await wallet.collection('checks').doc('c').set({ status: 'pending', type: 'issued', dueDate: today, amount: 10 });
+  const now = new Date();
+  const otherHour = (localHour(now) + 5) % 24;
+  await db.collection('users').doc(uid).set({ id: uid, pushEnabled: true, fcmTokens: { 'tok:hora': {} }, checkReminders: { hour: otherHour } });
+  const m1 = fakeMessaging();
+  await runDailyReminders({ db, messaging: m1, FieldValue, FieldPath, now, log: { error() {} } });
+  assert.strictEqual(m1.sent.filter((m) => m.token === 'tok:hora').length, 0, 'no es su hora');
+  await db.collection('users').doc(uid).update({ 'checkReminders.hour': localHour(now) });
+  const m2 = fakeMessaging();
+  await runDailyReminders({ db, messaging: m2, FieldValue, FieldPath, now, log: { error() {} } });
+  const got = m2.sent.filter((m) => m.token === 'tok:hora');
+  assert.strictEqual(got.length, 1);
+  assert.match(got[0].data.body, /Vence hoy/);
 });

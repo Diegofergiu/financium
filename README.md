@@ -32,6 +32,10 @@ Al registrarse se crea uno automáticamente con categorías listas para usar.
 ### Notificaciones
 
 - **Campanita** en la app con todos los avisos: cheques vencidos o por vencer (anticipación configurable) y presupuestos al 80 %/superados.
+- **Cheques con varios avisos:** en Ajustes → Avisos de cheques se eligen los días de anticipación (30, 15, 10, 7, 5, 3, 2, 1 y el mismo día),
+  por separado para cheques a cobrar y a pagar, qué hacer si se vence (una vez, todos los días, cada 2/3 días o semanal) y la
+  hora de las notificaciones. Cada cheque puede tener sus propios avisos ("Personalizar avisos"). La función `avisosDiarios`
+  corre cada hora y le envía a cada persona sus avisos a la hora elegida.
 - **Gastos fijos:** recordatorio el día que toca (o aviso de que se anotó solo).
 - **Resumen semanal** los lunes 9:30 (función `resumenSemanal`), desactivable desde Ajustes.
 - **Avisos con la app cerrada (push):** la Cloud Function `avisosDiarios` (`functions/`) corre todos los días a las 9:00

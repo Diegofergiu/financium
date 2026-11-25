@@ -33,7 +33,7 @@ export function MembersManager() {
     () => (user && activeWallet && isOwner ? query(collection(db, 'invites'), where('invitedBy', '==', user.uid), where('walletId', '==', activeWallet.id)) : null),
     [db, user, activeWallet?.id, isOwner]
   );
-  const { data: invites } = useCollection<Omit<Invite, 'id'>>(invitesQuery);
+  const { data: invites } = useCollection<Omit<Invite, 'id'>>(invitesQuery, { silent: true, label: 'las invitaciones' });
   const pending = (invites ?? []).filter((i) => i.status === 'pending');
 
   if (!activeWallet || !user) return null;

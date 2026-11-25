@@ -1,6 +1,8 @@
 'use client';
 
-import { MoreVertical, CheckCircle2, XCircle, Ban, RotateCcw, Pencil, Trash2, Landmark, CalendarClock } from 'lucide-react';
+import { MoreVertical, CheckCircle2, XCircle, Ban, RotateCcw, Pencil, Trash2, Landmark, CalendarClock, Bell } from 'lucide-react';
+import { useNotifications } from '@/components/providers/notifications-provider';
+import { ruleForCheck } from '@/lib/check-reminders';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { AttachmentBadge } from '@/components/shared/attachment-picker';
@@ -19,6 +21,7 @@ const STATUS: Record<Check['status'], { label: string; className: string }> = {
 
 export function CheckCard({ check, onEdit, compact }: { check: Check; onEdit?: (c: Check) => void; compact?: boolean }) {
   const { currency, canEdit } = useWallet();
+  const { reminders } = useNotifications();
   const { setStatus, remove } = useCheckActions();
   const days = daysUntil(check.dueDate);
   const pending = check.status === 'pending';
@@ -62,6 +65,19 @@ export function CheckCard({ check, onEdit, compact }: { check: Check; onEdit?: (
               {relativeDays(days)}
             </span>
           )}
+          {!compact && pending && (() => {
+            // Próximo aviso programado según la configuración (general o propia del cheque)
+            const rule = ruleForCheck(check, reminders);
+            const next = rule.days.filter((o) => o < days).sort((a, b) => b - a)[0];
+            if (next === undefined) return null;
+            const inDays = days - next;
+            return (
+              <span className="inline-flex items-center gap-1" title={check.reminderDays ? 'Avisos personalizados' : 'Avisos generales'}>
+                <Bell className="h-3.5 w-3.5" />
+                Próximo aviso {inDays === 1 ? 'mañana' : `en ${inDays} días`}
+              </span>
+            );
+          })()}
           {!compact && check.bank && (
             <span className="inline-flex items-center gap-1">
               <Landmark className="h-3.5 w-3.5" />

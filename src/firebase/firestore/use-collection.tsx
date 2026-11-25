@@ -53,7 +53,15 @@ export interface InternalQuery extends Query<DocumentData> {
  */
 export function useCollection<T = any>(
     memoizedTargetRefOrQuery: ((CollectionReference<DocumentData> | Query<DocumentData>) & {__memo?: boolean})  | null | undefined,
+    options?: {
+      /** Consultas secundarias (p. ej. invitaciones): si fallan no se avisa al usuario. */
+      silent?: boolean;
+      /** Nombre amigable para el aviso de error ("los cheques", "las categorías"…). */
+      label?: string;
+    },
 ): UseCollectionResult<T> {
+  const silent = !!options?.silent;
+  const label = options?.label;
   type ResultItemType = WithId<T>;
   type StateDataType = ResultItemType[] | null;
 
@@ -111,7 +119,9 @@ export function useCollection<T = any>(
           setError(contextualError);
           setData(null);
           setIsLoading(false);
-          errorEmitter.emit('permission-error', contextualError);
+          (contextualError as any).label = label;
+          console.error(`[Mi Bolsillo] No se pudo leer ${label ?? path}`, error.code, error.message);
+          if (!silent) errorEmitter.emit('permission-error', contextualError);
         }
       );
     };
@@ -122,6 +132,7 @@ export function useCollection<T = any>(
       clearTimeout(retryTimer);
       unsubscribe();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [memoizedTargetRefOrQuery]); // Re-run if the target query/reference changes.
   if(memoizedTargetRefOrQuery && !memoizedTargetRefOrQuery.__memo) {
     throw new Error(memoizedTargetRefOrQuery + ' was not properly memoized using useMemoFirebase');

@@ -123,6 +123,8 @@ export interface Check {
   transactionId?: string | null;
   accountId?: string;
   attachments?: Attachment[];
+  /** Avisos propios de este cheque (días antes). null/ausente = usar la configuración general. */
+  reminderDays?: number[] | null;
   createdAt?: Timestamp | null;
 }
 

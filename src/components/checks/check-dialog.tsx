@@ -20,6 +20,10 @@ import { useToast } from '@/hooks/use-toast';
 import { BANKS } from '@/lib/defaults';
 import { parseAmount, todayISO } from '@/lib/format';
 import type { Check, CheckStatus, CheckType } from '@/types';
+import { Switch } from '@/components/ui/switch';
+import { DayChips } from '@/components/settings/check-reminders-editor';
+import { useNotifications } from '@/components/providers/notifications-provider';
+import { describeRule, ruleForCheck } from '@/lib/check-reminders';
 
 export function CheckDialog({ open, onOpenChange, check, defaultType = 'toCollect' }: { open: boolean; onOpenChange: (o: boolean) => void; check?: Check | null; defaultType?: CheckType }) {
   const db = useFirestore();
@@ -37,6 +41,8 @@ export function CheckDialog({ open, onOpenChange, check, defaultType = 'toCollec
   const [dueDate, setDueDate] = useState(todayISO());
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
+  const [customReminders, setCustomReminders] = useState<number[] | null>(null);
+  const { reminders } = useNotifications();
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -48,6 +54,7 @@ export function CheckDialog({ open, onOpenChange, check, defaultType = 'toCollec
     setDueDate(check?.dueDate ?? todayISO());
     setAmount(check ? String(check.amount).replace('.', ',') : '');
     setNotes(check?.notes ?? '');
+    setCustomReminders(Array.isArray(check?.reminderDays) ? check!.reminderDays! : null);
     setAccountId(check?.accountId || defaultAccountId || '');
     saved.current = false;
     draft.reset(check?.attachments ?? []);
@@ -78,6 +85,7 @@ export function CheckDialog({ open, onOpenChange, check, defaultType = 'toCollec
       notes: notes.trim(),
       accountId: accountId || defaultAccountId || '',
       attachments: draft.items,
+      reminderDays: customReminders,
     };
     try {
       let result: 'ok' | 'queued';
@@ -182,6 +190,27 @@ export function CheckDialog({ open, onOpenChange, check, defaultType = 'toCollec
               </Select>
             </div>
           )}
+          <div className="space-y-3 rounded-xl border p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Personalizar avisos</p>
+                <p className="text-xs text-muted-foreground">
+                  {customReminders ? 'Avisos propios de este cheque.' : `Usa los generales: ${describeRule(ruleForCheck({ type }, reminders))}.`}
+                </p>
+              </div>
+              <Switch
+                checked={!!customReminders}
+                aria-label="Personalizar avisos de este cheque"
+                onCheckedChange={(on) => setCustomReminders(on ? ruleForCheck({ type }, reminders).days : null)}
+              />
+            </div>
+            {customReminders && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Avisarme antes del vencimiento</Label>
+                <DayChips value={customReminders} onChange={setCustomReminders} />
+              </div>
+            )}
+          </div>
           {activeWallet && <AttachmentPicker walletId={activeWallet.id} draft={draft} label="Foto del cheque (frente y dorso)" />}
           <DialogFooter className="pt-2">
             <Button type="submit" size="lg" className="h-12 w-full sm:w-auto" disabled={saving}>
